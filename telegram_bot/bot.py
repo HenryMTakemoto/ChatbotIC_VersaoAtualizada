@@ -59,6 +59,33 @@ async def telegram_vincular(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text("✅ Conta vinculada com sucesso!")
 
+async def telegram_nova_conversa(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Comando /nova — inicia uma nova conversa, descartando o histórico atual."""
+    telegram_uid = update.effective_user.id
+    session_key = f"tg_conv_{telegram_uid}"
+
+    # Remove a conversa ativa do cache para forçar criação de uma nova
+    if session_key in context.user_data:
+        del context.user_data[session_key]
+
+    await update.message.reply_text("🆕 Nova conversa iniciada! Pode perguntar.")
+
+async def telegram_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Comando /status — mostra se a conta Telegram está vinculada."""
+    user_id = get_user_id_by_telegram(update.effective_user.id)
+
+    if user_id:
+        await update.message.reply_text(
+            "✅ Sua conta está vinculada.\n"
+            "Você tem acesso aos documentos globais e pessoais."
+        )
+    else:
+        await update.message.reply_text(
+            "❌ Conta não vinculada.\n"
+            "Use /vincular <codigo> para vincular.\n"
+            "Enquanto isso, só posso consultar a base global."
+        )
+
 async def telegram_handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_uid = update.effective_user.id
     text = update.message.text
