@@ -47,15 +47,28 @@ def login(email: str, password: str) -> tuple[bool, str]:
 
 def register(email: str, password: str, full_name: str) -> tuple[bool, str]:
     """Registra novo usuário via Supabase Auth."""
+    from db.supabase_client import get_supabase_admin
+    try:
+        # Verifica diretamente no auth.users se o email já existe
+        admin = get_supabase_admin()
+        users = admin.auth.admin.list_users()
+        if any(u.email == email for u in users):
+            return False, "Este email já está cadastrado. Faça login ou use outro email."
+    except Exception:
+        pass  # Se a verificação falhar, tenta registrar normalmente
+
     supabase = get_supabase()
     try:
-        response = supabase.auth.sign_up({
+        supabase.auth.sign_up({
             "email": email,
             "password": password,
             "options": {"data": {"full_name": full_name}}
         })
         return True, "Conta criada! Verifique seu email para confirmar."
     except Exception as e:
+        error_msg = str(e).lower()
+        if "already registered" in error_msg or "already exists" in error_msg:
+            return False, "Este email já está cadastrado. Faça login ou use outro email."
         return False, f"Erro ao registrar: {str(e)}"
 
 def logout():
