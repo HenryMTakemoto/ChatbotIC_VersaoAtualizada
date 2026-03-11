@@ -14,8 +14,8 @@ def get_user_id_by_telegram(telegram_user_id: int) -> str | None:
     supabase = get_supabase()
     result = supabase.table("profiles").select("id").eq(
         "telegram_user_id", telegram_user_id
-    ).single().execute()
-    return result.data["id"] if result.data else None
+    ).execute()
+    return result.data[0]["id"] if result.data else None
 
 async def telegram_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = get_user_id_by_telegram(update.effective_user.id)
