@@ -14,42 +14,10 @@ from llm.chat import build_messages_with_rag, invoke_llm
 def show_chat_page():
     user_id = get_current_user_id()
 
-    # --- Sidebar: gerenciamento de conversas ---
-    with st.sidebar:
-        if st.button("➕ Nova Conversa", use_container_width=True):
-            conv_id = create_conversation(user_id)
-            st.session_state.active_conversation = conv_id
-            st.session_state.chat_messages = []
-            st.rerun()
-
-        st.markdown("#### 💬 Conversas")
-        conversations = get_user_conversations(user_id)
-
-        for conv in conversations:
-            col1, col2 = st.columns([5, 1])
-            with col1:
-                if st.button(
-                    f"📝 {conv['title']}",
-                    key=f"conv_{conv['id']}",
-                    use_container_width=True,
-                ):
-                    st.session_state.active_conversation = conv["id"]
-                    st.session_state.chat_messages = []
-                    st.rerun()
-            with col2:
-                if st.button("🗑", key=f"del_conv_{conv['id']}"):
-                    from db.supabase_client import get_supabase
-                    supabase = get_supabase()
-                    supabase.table("conversations").delete().eq(
-                        "id", conv["id"]
-                    ).execute()
-                    if st.session_state.get("active_conversation") == conv["id"]:
-                        st.session_state.active_conversation = None
-                        st.session_state.chat_messages = []
-                    st.rerun()
-
     # --- Área principal do chat ---
     st.markdown("### 💬 Chat — Assistente Cia Agro")
+
+    conversations = get_user_conversations(user_id)
 
     # Inicializa conversa ativa se necessário
     if "active_conversation" not in st.session_state or not st.session_state.active_conversation:

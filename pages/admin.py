@@ -8,7 +8,7 @@ def show_admin_page():
     user_id = get_current_user_id()
     admin = is_admin()
 
-    st.title("⚙️ Gerenciamento de Documentos")
+    st.title("📁 Upload de Documentos")
 
     # Upload de PDFs pessoais (todos os usuários)
     st.subheader("📁 Meus Documentos")
