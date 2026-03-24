@@ -24,6 +24,20 @@ Pergunta do usuário: {question}
 JSON:"""
 
 
+# --- MULTI-QUERY: Prompt para gerar variações da query ---
+MULTI_QUERY_PROMPT = """Você é um especialista em busca semântica. Dada a pergunta abaixo, gere exatamente 3 formas alternativas de perguntar a mesma coisa, usando vocabulário diferente que possa existir em documentos técnicos de agronomia.
+
+Regras:
+- Cada variação deve ter um significado equivalente à pergunta original
+- Use sinônimos técnicos, termos do campo, e diferentes estruturas de frase
+- NÃO responda a pergunta, apenas gere as variações
+- Retorne APENAS as 3 variações, uma por linha, sem numeração, sem bullet points
+
+Pergunta original: {question}
+
+Variações:"""
+
+
 def extract_metadata_filter(question: str) -> dict:
     """
     Usa o LLM para detectar se o usuário quer um documento específico.
@@ -33,7 +47,6 @@ def extract_metadata_filter(question: str) -> dict:
     import json
     from langchain_core.messages import HumanMessage
 
-    # Importa lazy para evitar circular imports
     try:
         from llm.client import get_llm
         llm = get_llm()
@@ -82,61 +95,119 @@ def apply_metadata_filter(chunks: list, filters: dict) -> list:
         print(f"[SelfQuery] {len(filtered)}/{len(chunks)} chunks após filtro por '{source_filter}'")
         return filtered
 
-    # Fallback: se o filtro eliminou tudo, retorna tudo (melhor responder errado do que não responder)
     print(f"[SelfQuery] Nenhum chunk bateu com '{source_filter}'. Usando busca geral.")
     return chunks
 
 
+def generate_query_variations(question: str) -> list[str]:
+    """
+    Multi-Query Retriever: usa o LLM para gerar 3 variações semânticas da pergunta.
+    Sempre retorna ao menos a pergunta original como fallback.
+    """
+    from langchain_core.messages import HumanMessage
+
+    try:
+        from llm.client import get_llm
+        llm = get_llm()
+        if not llm:
+            return [question]
+
+        prompt = MULTI_QUERY_PROMPT.format(question=question)
+        response = llm.invoke([HumanMessage(content=prompt)])
+        raw = response.content.strip()
+
+        # Quebra por linha e limpa espaços/vazios
+        variations = [v.strip() for v in raw.split("\n") if v.strip()]
+
+        # Garante no máximo 3 variações + a original (sem duplicatas)
+        seen = set()
+        unique = []
+        for v in [question] + variations[:3]:
+            if v.lower() not in seen:
+                seen.add(v.lower())
+                unique.append(v)
+
+        print(f"[MultiQuery] {len(unique)} queries geradas: {unique}")
+        return unique
+
+    except Exception as e:
+        print(f"[MultiQuery] Fallback para query original: {e}")
+        return [question]
+
+
+def fetch_chunks_for_query(supabase, query: str, fetch_count: int, user_id: str | None) -> list:
+    """Busca chunks no Supabase para uma única query."""
+    embedding = embed_query(query)
+    result = supabase.rpc("search_chunks_hybrid", {
+        "query_embedding": embedding,
+        "match_count": fetch_count,
+        "p_user_id": user_id
+    }).execute()
+    return result.data or []
+
+
+def deduplicate_chunks(all_chunks: list) -> list:
+    """Remove chunks duplicados baseado no conteúdo (content), mantendo o de maior similaridade."""
+    seen_content = {}
+    for chunk in all_chunks:
+        content = chunk.get("content", "")
+        # Mantém o chunk com maior similaridade de cosseno se o mesmo conteúdo aparecer mais de uma vez
+        existing = seen_content.get(content)
+        if not existing or chunk.get("similarity", 0) > existing.get("similarity", 0):
+            seen_content[content] = chunk
+
+    return list(seen_content.values())
+
+
 def hybrid_search(query: str, user_id: str | None = None, top_k: int = 5) -> str:
     """
-    Pipeline completo de busca RAG:
-    1. Self-Querying: detecta filtros de metadados via LLM
-    2. Overfetching: busca Top 20 via pgvector/cosine
-    3. Filtro em memória: aplica filtro de arquivo se detectado
-    4. Re-ranking: Cross-Encoder reordena pelos mais relevantes semanticamente
-    5. Formatação: serve parent_content (se disponível) para a IA
+    Pipeline completo de busca RAG com todas as 5 técnicas avançadas:
+    1. Self-Querying:  detecta filtros de metadados via LLM
+    2. Multi-Query:    gera variações semânticas para ampliar o recall
+    3. Overfetching:   busca Top 20 por variação via pgvector/cosine
+    4. Deduplicação:   remove resultados repetidos entre variações
+    5. Filtro:         aplica filtro de arquivo se detectado (Self-Querying)
+    6. Re-ranking:     Cross-Encoder reordena pelos mais relevantes semanticamente
+    7. Formatação:     serve parent_content (se disponível) para a IA
 
     Retorna contexto formatado como string, ou string vazia se nada encontrado.
     """
     supabase = get_supabase()
-    query_embedding = embed_query(query)
 
     # Passo 1: Self-Querying — detecta filtros de metadados
     filters = extract_metadata_filter(query)
 
-    # Passo 2: Overfetching — busca inicial ampla via similaridade de cosseno
+    # Passo 2: Multi-Query — gera variações semânticas da pergunta
+    query_variations = generate_query_variations(query)
+
+    # Passo 3: Overfetching — busca ampla para CADA variação
     fetch_count = max(top_k * 4, 20)
+    all_chunks = []
+    for variation in query_variations:
+        variation_chunks = fetch_chunks_for_query(supabase, variation, fetch_count, user_id)
+        all_chunks.extend(variation_chunks)
 
-    # Chama função SQL search_chunks_hybrid no Supabase
-    result = supabase.rpc("search_chunks_hybrid", {
-        "query_embedding": query_embedding,
-        "match_count": fetch_count,
-        "p_user_id": user_id
-    }).execute()
-
-    if not result.data:
+    if not all_chunks:
         return ""
 
-    chunks = result.data
+    # Passo 4: Deduplicação — remove chunks repetidos entre as variações
+    chunks = deduplicate_chunks(all_chunks)
+    print(f"[MultiQuery] {len(all_chunks)} chunks brutos → {len(chunks)} após deduplicação")
 
-    # Passo 3: Filtro em memória por metadados (Self-Querying)
+    # Passo 5: Filtro em memória por metadados (Self-Querying)
     chunks = apply_metadata_filter(chunks, filters)
 
-    # Passo 4: RE-RANKING (Cross-Encoder)
-    # Prepara os pares (Pergunta, Trecho) para avaliação rigorosa
+    # Passo 6: RE-RANKING (Cross-Encoder)
     pairs = [(query, chunk.get("content", "")) for chunk in chunks]
     scores = score_pairs(pairs)
 
     for i, chunk in enumerate(chunks):
         chunk["rerank_score"] = float(scores[i])
 
-    # Ordena decrescentemente pela nota do Cross-Encoder
     chunks.sort(key=lambda x: x["rerank_score"], reverse=True)
-
-    # Mantém apenas os top_k melhores
     top_chunks = chunks[:top_k]
 
-    # Passo 5: Formata contexto para o LLM
+    # Passo 7: Formata contexto para o LLM
     context_parts = []
     for i, chunk in enumerate(top_chunks, 1):
         metadata = chunk.get("metadata", {})
@@ -146,7 +217,6 @@ def hybrid_search(query: str, user_id: str | None = None, top_k: int = 5) -> str
         rerank_score = chunk.get("rerank_score", 0)
 
         # Parent Document Retriever: serve o trecho pai (1500 chars, rico em contexto)
-        # se disponível. Caso contrário, usa o conteúdo original do chunk (compatibilidade).
         parent_content = metadata.get("parent_content", "")
         content_to_serve = parent_content if parent_content else chunk.get("content", "")
 
