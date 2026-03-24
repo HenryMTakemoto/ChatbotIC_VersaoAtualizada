@@ -14,6 +14,10 @@ def process_and_store_pdf(
     """
     Pipeline completo: PDF → chunks → embeddings → Supabase.
 
+    Usa a técnica de Parent Document Retriever:
+    - Child chunks (300 chars): usados para busca vetorial de alta precisão.
+    - Parent chunks (1500 chars): armazenados no metadata do child, servidos para a IA.
+
     Args:
         pdf_file: UploadedFile do Streamlit
         user_id: UUID do usuário que fez o upload
@@ -46,16 +50,38 @@ def process_and_store_pdf(
         if not pages:
             return False, f"❌ Nenhuma página extraída de '{pdf_name}'."
 
-        # Divide em chunks
-        splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=200,
+        # --- PARENT DOCUMENT RETRIEVER ---
+
+        # Passo 1: Chunks GRANDES (Parent) — contexto rico para a IA
+        parent_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=1500,
+            chunk_overlap=150,
             separators=["\n\n", "\n", ".", " ", ""]
         )
-        chunks = splitter.split_documents(pages)
+        parent_chunks = parent_splitter.split_documents(pages)
 
-        if not chunks:
+        if not parent_chunks:
             return False, f"❌ Nenhum texto extraído de '{pdf_name}'."
+
+        # Passo 2: Chunks PEQUENOS (Child) — alta precisão na busca vetorial
+        child_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=300,
+            chunk_overlap=50,
+            separators=["\n\n", "\n", ".", " ", ""]
+        )
+
+        # Para cada parent, gera os children e vincula pelo metadata
+        all_child_chunks = []
+        for parent in parent_chunks:
+            children = child_splitter.split_documents([parent])
+            for child in children:
+                # Guarda o texto COMPLETO do parent no metadata do child.
+                # O retriever irá servir esse texto rico para a IA em vez do child pequeno.
+                child.metadata["parent_content"] = parent.page_content
+                all_child_chunks.append(child)
+
+        if not all_child_chunks:
+            return False, f"❌ Nenhum child chunk gerado de '{pdf_name}'."
 
         # Salva metadados do documento
         doc_id = str(uuid.uuid4())
@@ -64,26 +90,27 @@ def process_and_store_pdf(
             "user_id": None if is_global else user_id,
             "file_name": pdf_name,
             "file_size_bytes": pdf_file.size,
-            "total_chunks": len(chunks),
+            "total_chunks": len(all_child_chunks),
             "is_global": is_global,
             "uploaded_by": user_id
         }).execute()
 
-        # Gera todos os embeddings de uma vez (mais eficiente)
-        texts = [chunk.page_content for chunk in chunks]
+        # Gera embeddings apenas para os child chunks (textos pequenos e precisos)
+        texts = [chunk.page_content for chunk in all_child_chunks]
         embeddings = embed_texts(texts)
 
         # Monta linhas para inserção
         rows = []
-        for chunk, embedding in zip(chunks, embeddings):
+        for chunk, embedding in zip(all_child_chunks, embeddings):
             rows.append({
                 "document_id": doc_id,
                 "user_id": None if is_global else user_id,
                 "is_global": is_global,
-                "content": chunk.page_content,
+                "content": chunk.page_content,   # child: buscado pelo vetor
                 "metadata": {
                     "source_name": pdf_name,
-                    "page": chunk.metadata.get("page", 0)
+                    "page": chunk.metadata.get("page", 0),
+                    "parent_content": chunk.metadata.get("parent_content", "")  # parent: servido para IA
                 },
                 "embedding": embedding
             })
@@ -94,7 +121,7 @@ def process_and_store_pdf(
             supabase.table("document_chunks").insert(rows[i:i + batch_size]).execute()
 
         scope = "global 🌐" if is_global else "pessoal 👤"
-        return True, f"✅ '{pdf_name}' indexado como documento {scope}! ({len(chunks)} chunks)"
+        return True, f"✅ '{pdf_name}' indexado como documento {scope}! ({len(all_child_chunks)} chunks via Parent-Child)"
 
     except Exception as e:
         return False, f"❌ Erro ao processar '{pdf_name}': {e}"

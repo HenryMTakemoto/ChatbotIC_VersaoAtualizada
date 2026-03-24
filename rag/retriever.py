@@ -54,13 +54,17 @@ def hybrid_search(query: str, user_id: str | None = None, top_k: int = 5) -> str
         metadata = chunk.get("metadata", {})
         source = metadata.get("source_name", "Desconhecido")
         page = metadata.get("page", "?")
-        content = chunk.get("content", "")
         cosine_sim = chunk.get("similarity", 0)
         rerank_score = chunk.get("rerank_score", 0)
 
+        # Parent Document Retriever: serve o trecho pai (1500 chars, rico em contexto)
+        # se disponível. Caso contrário, usa o conteúdo original do chunk (compatibilidade).
+        parent_content = metadata.get("parent_content", "")
+        content_to_serve = parent_content if parent_content else chunk.get("content", "")
+
         context_parts.append(
             f"[Trecho {i}] (Fonte: {source}, Página: {page}, "
-            f"Cross-Score: {rerank_score:.2f}, Vector-Sim: {cosine_sim:.2f})\n{content}"
+            f"Cross-Score: {rerank_score:.2f}, Vector-Sim: {cosine_sim:.2f})\n{content_to_serve}"
         )
 
     return "\n\n---\n\n".join(context_parts)
