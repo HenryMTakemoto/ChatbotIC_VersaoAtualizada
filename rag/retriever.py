@@ -6,18 +6,18 @@ from db.supabase_client import get_supabase
 FILTER_EXTRACTION_PROMPT = """Analise a pergunta do usuário abaixo e determine se ele está solicitando informações de um arquivo específico pelo nome.
 
 Exemplos de perguntas com filtro:
-- "Resuma o arquivo relatorio_2024.pdf" → {"source_name": "relatorio_2024.pdf"}
-- "O que diz o manual de trigo sobre adubação?" → {"source_name": "trigo"}
-- "Busque no documento soja.pdf" → {"source_name": "soja.pdf"}
+- "Resuma o arquivo relatorio_2024.pdf" → {{"source_name": "relatorio_2024.pdf"}}
+- "O que diz o manual de trigo sobre adubação?" → {{"source_name": "trigo"}}
+- "Busque no documento soja.pdf" → {{"source_name": "soja.pdf"}}
 
 Exemplos de perguntas SEM filtro (busca geral):
-- "Quais são as pragas da soja?" → {}
-- "Como fazer adubação?" → {}
-- "Explique o ciclo do milho" → {}
+- "Quais são as pragas da soja?" → {{}}
+- "Como fazer adubação?" → {{}}
+- "Explique o ciclo do milho" → {{}}
 
 Responda APENAS com um objeto JSON válido, sem texto adicional, sem markdown.
-Se houver filtro, retorne: {"source_name": "nome_detectado"}
-Se não houver filtro, retorne: {}
+Se houver filtro, retorne: {{"source_name": "nome_detectado"}}
+Se não houver filtro, retorne: {{}}
 
 Pergunta do usuário: {question}
 
