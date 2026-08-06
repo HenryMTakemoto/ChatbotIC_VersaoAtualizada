@@ -1,4 +1,5 @@
 from functools import lru_cache
+from time import perf_counter
 import streamlit as st
 
 
@@ -12,15 +13,23 @@ class LLMWithFallback:
         errors = []
 
         for index, (provider_name, llm) in enumerate(self.providers):
+            started_at = perf_counter()
             try:
-                return llm.invoke(messages)
+                response = llm.invoke(messages)
+                print(
+                    f"[Performance] LLM {provider_name} respondeu em "
+                    f"{perf_counter() - started_at:.2f}s",
+                    flush=True,
+                )
+                return response
             except Exception as e:
                 errors.append(f"{provider_name}: {str(e)[:200]}")
                 has_fallback = index < len(self.providers) - 1
                 if has_fallback:
                     print(
                         f"[LLM] {provider_name} falhou durante a chamada "
-                        f"({str(e)[:200]}), tentando próximo provedor..."
+                        f"({str(e)[:200]}), tentando próximo provedor...",
+                        flush=True,
                     )
 
         raise RuntimeError(
@@ -42,7 +51,8 @@ def get_llm():
             nvidia_api_key=st.secrets["NVIDIA_API_KEY"],
             model="meta/llama-3.3-70b-instruct",
             temperature=0.5,
-            max_tokens=1024
+            max_tokens=1024,
+            timeout=45,
         )
         providers.append(("NVIDIA", nvidia))
     except Exception as e:
@@ -53,7 +63,9 @@ def get_llm():
         groq = ChatGroq(
             groq_api_key=st.secrets["GROQ_API_KEY"],
             model_name="llama-3.3-70b-versatile",
-            temperature=0.5
+            temperature=0.5,
+            timeout=45,
+            max_retries=1,
         )
         providers.append(("Groq", groq))
     except Exception as e:

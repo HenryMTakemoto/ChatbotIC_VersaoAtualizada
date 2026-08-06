@@ -91,7 +91,7 @@ ChatbotIC/
 ## Configuração
 
 ### Pré-requisitos
-- Python 3.10+
+- Python 3.12 (versão recomendada para o deploy)
 - Conta no [Supabase](https://supabase.com)
 - Token de bot no [Telegram BotFather](https://t.me/botfather)
 - Chave de API no [Groq](https://console.groq.com) ou [NVIDIA](https://build.nvidia.com)
@@ -111,6 +111,8 @@ SUPABASE_SECRET_KEY      = "sua-service-role-key"
 TELEGRAM_TOKEN           = "seu-token-do-bot"
 GROQ_API_KEY             = "sua-groq-api-key"
 NVIDIA_API_KEY           = "sua-nvidia-api-key"
+# Opcional: evita downloads anônimos e lentos dos modelos de embeddings
+HF_TOKEN                 = "seu-token-huggingface"
 ```
 
 Inicie a aplicação:
@@ -123,8 +125,9 @@ streamlit run app.py
 
 1. Suba o código para um repositório GitHub público
 2. Acesse [share.streamlit.io](https://share.streamlit.io) e conecte o repositório
-3. Configure os secrets em **Settings → Secrets** (mesmo conteúdo do `secrets.toml` acima)
-4. Deploy automático a cada `git push`
+3. Em **Advanced settings**, selecione **Python 3.12**
+4. Configure os secrets em **Settings → Secrets** (mesmo conteúdo do `secrets.toml` acima)
+5. Deploy automático a cada `git push`
 
 
 ## Observações

@@ -1,3 +1,5 @@
+from time import perf_counter
+
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from rag.retriever import hybrid_search
 from .client import get_llm
@@ -42,6 +44,7 @@ def rephrase_to_standalone_question(question: str, history: list) -> str:
         return question
 
     try:
+        started_at = perf_counter()
         # Formata o histórico como texto legível
         history_text = ""
         for msg in history:
@@ -58,6 +61,11 @@ def rephrase_to_standalone_question(question: str, history: list) -> str:
         )
         response = llm.invoke([HumanMessage(content=prompt)])
         rephrased = response.content.strip()
+        print(
+            f"[Performance] Reescrita conversacional concluída em "
+            f"{perf_counter() - started_at:.2f}s",
+            flush=True,
+        )
 
         # Fallback: se o LLM retornar algo vazio ou muito longo, usa original
         if rephrased and len(rephrased) < 500:
@@ -83,6 +91,8 @@ def build_messages_with_rag(
     
     Retorna (messages, rag_was_used).
     """
+    started_at = perf_counter()
+
     # Conversational Retrieval — reescreve para uma query autossuficiente
     standalone_question = rephrase_to_standalone_question(question, history)
     
@@ -109,6 +119,12 @@ def build_messages_with_rag(
     messages = [SystemMessage(content=SYSTEM_PROMPT)]
     messages += history
     messages.append(HumanMessage(content=augmented_question))
+
+    print(
+        f"[Performance] Preparação completa do RAG em "
+        f"{perf_counter() - started_at:.2f}s",
+        flush=True,
+    )
 
     return messages, rag_used
 

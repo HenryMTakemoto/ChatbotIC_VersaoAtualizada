@@ -26,8 +26,9 @@ def process_and_store_pdf(
     Returns:
         (sucesso: bool, mensagem: str)
     """
-    from langchain_community.document_loaders import PyPDFLoader
+    from langchain_core.documents import Document
     from langchain_text_splitters import RecursiveCharacterTextSplitter
+    from pypdf import PdfReader
 
     supabase = get_supabase()
     pdf_name = pdf_file.name
@@ -37,15 +38,28 @@ def process_and_store_pdf(
         return False, f"⚠️ '{pdf_name}' já está indexado."
 
     try:
-        # Salva em arquivo temporário (PyPDFLoader precisa de path)
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-            tmp.write(pdf_file.read())
-            tmp_path = tmp.name
+        # Salva em arquivo temporário e extrai o texto diretamente com pypdf.
+        # Isso evita carregar todo o pacote langchain-community apenas para PDFs.
+        tmp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+                tmp.write(pdf_file.read())
+                tmp_path = tmp.name
 
-        # Carrega páginas
-        loader = PyPDFLoader(tmp_path)
-        pages = loader.load()
-        os.unlink(tmp_path)
+            reader = PdfReader(tmp_path)
+            pages = []
+            for page_number, page in enumerate(reader.pages):
+                page_text = page.extract_text() or ""
+                if page_text.strip():
+                    pages.append(
+                        Document(
+                            page_content=page_text,
+                            metadata={"page": page_number, "source": pdf_name},
+                        )
+                    )
+        finally:
+            if tmp_path and os.path.exists(tmp_path):
+                os.unlink(tmp_path)
 
         if not pages:
             return False, f"❌ Nenhuma página extraída de '{pdf_name}'."
