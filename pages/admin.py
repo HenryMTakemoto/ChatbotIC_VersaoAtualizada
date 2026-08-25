@@ -1,4 +1,7 @@
 import streamlit as st
+import json
+from pathlib import Path
+
 from auth.authenticator import is_admin, get_current_user_id
 from rag.pdf_processor import process_and_store_pdf
 from db.documents import list_documents, list_global_documents, delete_document
@@ -89,6 +92,54 @@ def show_admin_page():
                         st.rerun()
         else:
             st.info("Nenhum documento global indexado ainda.")
+
+        st.markdown("---")
+        st.subheader("🧪 Diagnóstico da recuperação")
+        st.caption(
+            "Executa uma pergunta cega somente até a recuperação dos trechos, "
+            "sem gastar tokens da LLM de resposta."
+        )
+
+        question_file = Path(__file__).resolve().parents[1] / "evals" / "questions_blind.json"
+        try:
+            question_items = json.loads(
+                question_file.read_text(encoding="utf-8")
+            )["questions"]
+            selected_id = st.selectbox(
+                "Pergunta de avaliação",
+                options=[item["id"] for item in question_items],
+                format_func=lambda item_id: next(
+                    f"{item['id']} — {item['question']}"
+                    for item in question_items
+                    if item["id"] == item_id
+                ),
+            )
+            selected = next(
+                item for item in question_items if item["id"] == selected_id
+            )
+
+            if st.button("Testar recuperação", type="secondary"):
+                from rag.retriever import hybrid_search
+
+                with st.spinner("Buscando evidências na base..."):
+                    retrieved_context = hybrid_search(
+                        selected["question"], user_id
+                    )
+
+                if retrieved_context:
+                    st.success("O RAG encontrou contexto acima do limiar de relevância.")
+                    st.text_area(
+                        "Trechos que seriam enviados ao modelo",
+                        value=retrieved_context,
+                        height=420,
+                    )
+                else:
+                    st.warning(
+                        "Nenhum contexto foi aceito. Para perguntas fora do escopo, "
+                        "este é o comportamento esperado."
+                    )
+        except (OSError, KeyError, ValueError) as exc:
+            st.warning(f"Perguntas de avaliação indisponíveis: {exc}")
 
     # Vinculação Telegram 
     st.markdown("---")

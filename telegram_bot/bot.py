@@ -120,6 +120,13 @@ async def telegram_handle_message(update: Update, context: ContextTypes.DEFAULT_
         # RAG + LLM
         messages, rag_used = build_messages_with_rag(text, history, user_id)
         reply = invoke_llm(messages)
+        if rag_used:
+            reply += "\n\n📄 Contexto recuperado da base documental."
+        else:
+            reply += (
+                "\n\n⚠️ Nenhum contexto relevante foi recuperado; "
+                "a resposta não está fundamentada na base documental."
+            )
 
         # Salva no banco
         if user_id:

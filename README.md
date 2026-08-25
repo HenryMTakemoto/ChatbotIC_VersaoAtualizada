@@ -1,13 +1,16 @@
 # Assistente Cia Agro
 
-Chatbot de IA especializado em agricultura, desenvolvido como projeto de Iniciação Científica (IC). Combina RAG (Retrieval-Augmented Generation) com banco de dados em nuvem para responder perguntas com base em documentos PDF indexados.
+Chatbot de IA especializado em enfezamentos do milho e na cigarrinha-do-milho
+(*Dalbulus maidis*), desenvolvido como projeto de Iniciação Científica (IC).
+Combina RAG (Retrieval-Augmented Generation) com uma base curada de artigos para
+responder com fonte e página verificáveis.
 
 
 ## Funcionalidades
 
 ### Chat com IA
 - Interface web interativa via **Streamlit**
-- Respostas geradas por modelos de linguagem (LLM) via **Groq** ou **NVIDIA AI Endpoints**
+- Respostas geradas por modelos de linguagem (LLM) via **Groq**, com **NVIDIA AI Endpoints** como fallback
 - Suporte a histórico de conversas persistente entre sessões
 - Múltiplas conversas por usuário, com títulos automáticos e exclusão individual
 - Indicação visual quando a resposta utilizou documentos indexados (RAG)
@@ -19,6 +22,8 @@ Chatbot de IA especializado em agricultura, desenvolvido como projeto de Inicia�
 - **Base global**: documentos disponíveis para todos os usuários
 - **Base pessoal**: documentos privados de cada usuário
 - Combinação automática das duas bases em cada consulta
+- Roteamento de domínio e limiar mínimo de relevância para não apresentar qualquer vizinho vetorial como evidência
+- Painel administrativo com perguntas cegas para diagnosticar a recuperação sem gastar tokens da LLM final
 
 ### Autenticação
 - Cadastro e login via **Supabase Auth**
@@ -80,7 +85,7 @@ ChatbotIC/
 | Frontend | Streamlit |
 | Banco de dados | Supabase (PostgreSQL + pgvector) |
 | Autenticação | Supabase Auth |
-| LLM | Groq (LLaMA) / NVIDIA AI Endpoints |
+| LLM | Groq (`openai/gpt-oss-120b`) / NVIDIA AI Endpoints |
 | Embeddings | sentence-transformers (HuggingFace) |
 | RAG | LangChain + pgvector |
 | Bot | python-telegram-bot |
@@ -113,6 +118,12 @@ GROQ_API_KEY             = "sua-groq-api-key"
 NVIDIA_API_KEY           = "sua-nvidia-api-key"
 # Opcional: evita downloads anônimos e lentos dos modelos de embeddings
 HF_TOKEN                 = "seu-token-huggingface"
+# O Multi-Query custa uma chamada extra e fica desligado até demonstrar ganho
+ENABLE_MULTI_QUERY       = false
+# Opcionais: permitem trocar modelos sem editar o código
+GROQ_ANSWER_MODEL        = "openai/gpt-oss-120b"
+GROQ_UTILITY_MODEL       = "openai/gpt-oss-20b"
+RAG_MIN_VECTOR_SIMILARITY = 0.30
 ```
 
 Inicie a aplicação:
@@ -135,3 +146,4 @@ streamlit run app.py
 - O projeto é um **protótipo de pesquisa** — o servidor entra em modo de economia de energia quando inativo no plano gratuito do Streamlit Cloud
 - O bot do Telegram é iniciado automaticamente em uma thread background quando o painel web é acessado
 - Usuários sem conta podem interagir com o bot do Telegram usando apenas a base global de documentos
+- O arquivo `evals/questions_blind.json` contém 24 perguntas definidas antes da inspeção do corpus; veja `evals/README.md` para a rubrica de correção, recuperação, fidelidade, citação e segurança

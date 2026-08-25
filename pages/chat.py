@@ -14,8 +14,11 @@ from llm.chat import build_messages_with_rag, invoke_llm
 def show_chat_page():
     user_id = get_current_user_id()
 
-    # --- Área principal do chat ---
     st.markdown("### 💬 Chat — Assistente Cia Agro")
+    st.caption(
+        "Especialista em enfezamentos do milho e Dalbulus maidis. "
+        "Quando encontra evidência, a resposta deve indicar artigo e página física do PDF."
+    )
 
     conversations = get_user_conversations(user_id)
 
@@ -46,7 +49,7 @@ def show_chat_page():
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
             if msg.get("rag_used") and msg["role"] == "assistant":
-                st.caption("📄 Resposta baseada em documentos indexados")
+                st.caption("📄 Resposta com contexto recuperado da base documental")
 
     # Input do usuário
     if prompt := st.chat_input("Digite sua pergunta..."):
@@ -82,7 +85,12 @@ def show_chat_page():
 
             st.markdown(reply)
             if rag_used:
-                st.caption("📄 Resposta baseada em documentos indexados")
+                st.caption("📄 Resposta com contexto recuperado da base documental")
+            else:
+                st.caption(
+                    "⚠️ Nenhum contexto relevante foi recuperado; "
+                    "esta resposta não está fundamentada na base documental."
+                )
 
         # Salva resposta
         save_message(active_conv, "assistant", reply, rag_used)

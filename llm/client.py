@@ -37,38 +37,62 @@ class LLMWithFallback:
         )
 
 
-@lru_cache(maxsize=1)
-def get_llm():
+@lru_cache(maxsize=2)
+def get_llm(purpose: str = "answer"):
     """
-    Singleton do LLM. Tenta NVIDIA NIM primeiro e usa Groq como fallback,
-    inclusive quando a falha acontece durante a chamada ao modelo.
-    """
-    providers = []
+    Singleton por finalidade. O modelo principal redige respostas; o modelo
+    utilitário executa apenas tarefas curtas de recuperação.
 
-    try:
-        from langchain_nvidia_ai_endpoints import ChatNVIDIA
-        nvidia = ChatNVIDIA(
-            nvidia_api_key=st.secrets["NVIDIA_API_KEY"],
-            model="meta/llama-3.3-70b-instruct",
-            temperature=0.5,
-            max_tokens=1024,
-            timeout=45,
-        )
-        providers.append(("NVIDIA", nvidia))
-    except Exception as e:
-        print(f"[LLM] NVIDIA não pôde ser inicializada ({str(e)[:200]}).")
+    O Groq usa modelos de produção atuais. Os IDs podem ser sobrescritos nos
+    secrets sem alteração de código.
+    """
+    if purpose not in {"answer", "utility"}:
+        raise ValueError(f"Finalidade de LLM desconhecida: {purpose}")
+
+    providers = []
+    is_utility = purpose == "utility"
 
     try:
         from langchain_groq import ChatGroq
+        default_model = "openai/gpt-oss-20b" if is_utility else "openai/gpt-oss-120b"
+        model_name = st.secrets.get(
+            "GROQ_UTILITY_MODEL" if is_utility else "GROQ_ANSWER_MODEL",
+            default_model,
+        )
+        groq_kwargs = {}
+        if model_name.startswith("openai/gpt-oss"):
+            groq_kwargs.update(
+                reasoning_effort="low",
+                reasoning_format="hidden",
+            )
         groq = ChatGroq(
             groq_api_key=st.secrets["GROQ_API_KEY"],
-            model_name="llama-3.3-70b-versatile",
-            temperature=0.5,
+            model_name=model_name,
+            temperature=0 if is_utility else 0.1,
+            max_tokens=400 if is_utility else 800,
             timeout=45,
             max_retries=1,
+            **groq_kwargs,
         )
-        providers.append(("Groq", groq))
+        providers.append((f"Groq/{model_name}", groq))
     except Exception as e:
         print(f"[LLM] Groq não pôde ser inicializado: {str(e)[:200]}")
+
+    try:
+        from langchain_nvidia_ai_endpoints import ChatNVIDIA
+        model_name = st.secrets.get(
+            "NVIDIA_UTILITY_MODEL" if is_utility else "NVIDIA_ANSWER_MODEL",
+            "meta/llama-3.3-70b-instruct",
+        )
+        nvidia = ChatNVIDIA(
+            nvidia_api_key=st.secrets["NVIDIA_API_KEY"],
+            model=model_name,
+            temperature=0 if is_utility else 0.1,
+            max_tokens=400 if is_utility else 800,
+            timeout=45,
+        )
+        providers.append((f"NVIDIA/{model_name}", nvidia))
+    except Exception as e:
+        print(f"[LLM] NVIDIA não pôde ser inicializada ({str(e)[:200]}).")
 
     return LLMWithFallback(providers) if providers else None

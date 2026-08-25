@@ -2,18 +2,42 @@ import re
 from time import perf_counter
 
 from .embeddings import embed_texts, score_pairs
+from .relevance import filter_by_vector_similarity, is_domain_query
 from db.supabase_client import get_supabase
 
 
-QUERY_VARIATION_COUNT = 2
+QUERY_VARIATION_COUNT = 1
 RERANK_CANDIDATE_COUNT = 15
+MIN_VECTOR_SIMILARITY = 0.30
+MIN_FILTERED_VECTOR_SIMILARITY = 0.20
 DOCUMENT_REFERENCE_PATTERN = re.compile(
-    r"(?:\b(?:arquivo|documento|pdf|manual|relatório|relatorio|apostila|cartilha)\b|\.pdf\b)",
+    r"(?:\b(?:arquivos?|documentos?|pdfs?|manuais?|relatórios?|relatorios?|apostilas?|cartilhas?)\b|\.pdf\b)",
     re.IGNORECASE,
 )
 
 
-# --- SELF-QUERYING: Prompt para extrair filtros de metadados ---
+def _feature_enabled(name: str, default: bool = False) -> bool:
+    """Lê uma feature flag dos secrets do Streamlit de forma tolerante."""
+    try:
+        import streamlit as st
+        value = st.secrets.get(name, default)
+    except Exception:
+        value = default
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on", "sim"}
+    return bool(value)
+
+
+def _float_setting(name: str, default: float) -> float:
+    """Lê um número dos secrets e preserva um padrão seguro se for inválido."""
+    try:
+        import streamlit as st
+        return float(st.secrets.get(name, default))
+    except Exception:
+        return default
+
+
+# SELF-QUERYING: Prompt para extrair filtros de metadados
 FILTER_EXTRACTION_PROMPT = """Analise a pergunta do usuário abaixo e determine se ele está solicitando informações de um arquivo específico pelo nome.
 
 Exemplos de perguntas com filtro:
@@ -35,7 +59,7 @@ Pergunta do usuário: {question}
 JSON:"""
 
 
-# --- MULTI-QUERY: Prompt para gerar variações da query ---
+# MULTI-QUERY: Prompt para gerar variações da query
 MULTI_QUERY_PROMPT = """Você é um especialista em busca semântica. Dada a pergunta abaixo, gere exatamente {variation_count} formas alternativas de perguntar a mesma coisa, usando vocabulário diferente que possa existir em documentos técnicos de agronomia.
 
 Regras:
@@ -66,7 +90,7 @@ def extract_metadata_filter(question: str) -> dict:
 
     try:
         from llm.client import get_llm
-        llm = get_llm()
+        llm = get_llm("utility")
         if not llm:
             return {}
 
@@ -100,7 +124,7 @@ def extract_metadata_filter(question: str) -> dict:
 def apply_metadata_filter(chunks: list, filters: dict) -> list:
     """
     Filtra chunks em memória com base nos metadados.
-    Se nenhum chunk bater com o filtro, retorna a lista original (fallback seguro).
+    Se o arquivo pedido não for encontrado, não usa outro documento no lugar.
     """
     if not filters:
         return chunks
@@ -118,8 +142,8 @@ def apply_metadata_filter(chunks: list, filters: dict) -> list:
         print(f"[SelfQuery] {len(filtered)}/{len(chunks)} chunks após filtro por '{source_filter}'")
         return filtered
 
-    print(f"[SelfQuery] Nenhum chunk bateu com '{source_filter}'. Usando busca geral.")
-    return chunks
+    print(f"[SelfQuery] Nenhum chunk bateu com '{source_filter}'. Busca interrompida.")
+    return []
 
 
 def generate_query_variations(question: str) -> list[str]:
@@ -127,11 +151,17 @@ def generate_query_variations(question: str) -> list[str]:
     Multi-Query Retriever: usa o LLM para gerar variações semânticas da pergunta.
     Sempre retorna ao menos a pergunta original como fallback.
     """
+    # Desabilitado por padrão: em um corpus pequeno, o reranker já recebe
+    # candidatos suficientes e uma chamada de LLM por consulta custa latência e
+    # cota. Pode ser reativado com ENABLE_MULTI_QUERY=true após medir ganho.
+    if not _feature_enabled("ENABLE_MULTI_QUERY"):
+        return [question]
+
     from langchain_core.messages import HumanMessage
 
     try:
         from llm.client import get_llm
-        llm = get_llm()
+        llm = get_llm("utility")
         if not llm:
             return [question]
 
@@ -218,26 +248,30 @@ def select_unique_parent_chunks(chunks: list, top_k: int) -> list:
 
 def hybrid_search(query: str, user_id: str | None = None, top_k: int = 5) -> str:
     """
-    Pipeline completo de busca RAG com todas as 5 técnicas avançadas:
-    1. Self-Querying:  detecta filtros de metadados via LLM
-    2. Multi-Query:    gera variações semânticas para ampliar o recall
-    3. Overfetching:   busca Top 10 por variação via pgvector/cosine
-    4. Deduplicação:   remove resultados repetidos entre variações
-    5. Filtro:         aplica filtro de arquivo se detectado (Self-Querying)
-    6. Re-ranking:     Cross-Encoder reordena até 15 candidatos
-    7. Formatação:     serve parent_content (se disponível) para a IA
+    Pipeline de busca RAG especializado:
+    1. Roteamento de domínio: evita consultar artigos agrícolas para perguntas alheias
+    2. Self-Querying: detecta filtros explícitos de documento
+    3. Multi-Query opcional: só é ativado quando medido/configurado
+    4. Busca vetorial, deduplicação e limiar mínimo de relevância
+    5. Re-ranking de até 15 candidatos
+    6. Formatação do parent com fonte e página verificáveis
 
     Retorna contexto formatado como string, ou string vazia se nada encontrado.
     """
+    mentions_document = bool(DOCUMENT_REFERENCE_PATTERN.search(query))
+    if not is_domain_query(query, mentions_document=mentions_document):
+        print("[RAG] Busca ignorada: pergunta fora do domínio da base.", flush=True)
+        return ""
+
     supabase = get_supabase()
 
-    # Passo 1: Self-Querying — detecta filtros de metadados
+    # Self-Querying — detecta filtros de metadados
     filters = extract_metadata_filter(query)
 
-    # Passo 2: Multi-Query — gera variações semânticas da pergunta
+    # Multi-Query — gera variações semânticas da pergunta
     query_variations = generate_query_variations(query)
 
-    # Passo 3: gera todos os embeddings em um único lote e faz a busca.
+    # gera todos os embeddings em um único lote e faz a busca.
     # Dez candidatos por query preservam recall suficiente antes do re-ranking.
     fetch_count = max(top_k * 2, 10)
     search_started_at = perf_counter()
@@ -261,14 +295,32 @@ def hybrid_search(query: str, user_id: str | None = None, top_k: int = 5) -> str
     if not all_chunks:
         return ""
 
-    # Passo 4: Deduplicação — remove chunks repetidos entre as variações
+    # Deduplicação — remove chunks repetidos entre as variações
     chunks = deduplicate_chunks(all_chunks)
     print(f"[MultiQuery] {len(all_chunks)} chunks brutos → {len(chunks)} após deduplicação")
 
-    # Passo 5: Filtro em memória por metadados (Self-Querying)
+    # Filtro em memória por metadados (Self-Querying)
     chunks = apply_metadata_filter(chunks, filters)
+    if not chunks:
+        return ""
 
-    # Passo 6: pré-seleciona por similaridade e limita o Cross-Encoder. Em caso
+    # pgvector sempre consegue devolver vizinhos, mesmo para perguntas sem
+    # resposta. O limiar impede que "vizinho mais próximo" seja confundido com
+    # evidência suficiente. Filtros explícitos toleram similaridade um pouco menor.
+    minimum_similarity = (
+        _float_setting("RAG_MIN_FILTERED_VECTOR_SIMILARITY", MIN_FILTERED_VECTOR_SIMILARITY)
+        if filters
+        else _float_setting("RAG_MIN_VECTOR_SIMILARITY", MIN_VECTOR_SIMILARITY)
+    )
+    chunks = filter_by_vector_similarity(chunks, minimum_similarity)
+    if not chunks:
+        print(
+            f"[RAG] Nenhum candidato atingiu Vector-Sim >= {minimum_similarity:.2f}.",
+            flush=True,
+        )
+        return ""
+
+    # pré-seleciona por similaridade e limita o Cross-Encoder. Em caso
     # de falha do modelo local, a busca vetorial continua entregando resultados.
     chunks.sort(key=lambda x: float(x.get("similarity") or 0), reverse=True)
     rerank_candidates = chunks[:RERANK_CANDIDATE_COUNT]
@@ -298,12 +350,18 @@ def hybrid_search(query: str, user_id: str | None = None, top_k: int = 5) -> str
 
     top_chunks = select_unique_parent_chunks(rerank_candidates, top_k)
 
-    # Passo 7: Formata contexto para o LLM
+    # Formata contexto para o LLM
     context_parts = []
     for i, chunk in enumerate(top_chunks, 1):
         metadata = chunk.get("metadata", {})
         source = metadata.get("source_name", "Desconhecido")
         page = metadata.get("page", "?")
+        # Documentos indexados antes da correção guardavam índice iniciado em 0.
+        if metadata.get("page_numbering") != "pdf_1_based":
+            try:
+                page = int(page) + 1
+            except (TypeError, ValueError):
+                pass
         cosine_sim = chunk.get("similarity", 0)
         rerank_score = chunk.get("rerank_score", 0)
 
@@ -312,8 +370,14 @@ def hybrid_search(query: str, user_id: str | None = None, top_k: int = 5) -> str
         content_to_serve = parent_content if parent_content else chunk.get("content", "")
 
         context_parts.append(
-            f"[Trecho {i}] (Fonte: {source}, Página: {page}, "
-            f"Cross-Score: {rerank_score:.2f}, Vector-Sim: {cosine_sim:.2f})\n{content_to_serve}"
+            f"[Trecho {i}] [Fonte: {source}, página do PDF: {page}]\n"
+            f"{content_to_serve}"
+        )
+
+        print(
+            f"[RAG] Trecho {i}: {source}, p. {page}, "
+            f"Cross={rerank_score:.2f}, Vector={cosine_sim:.2f}",
+            flush=True,
         )
 
     return "\n\n---\n\n".join(context_parts)

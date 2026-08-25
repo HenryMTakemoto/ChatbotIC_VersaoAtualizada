@@ -1,0 +1,179 @@
+{
+  "metadata": {
+    "name": "Avaliação cega — enfezamentos do milho e Dalbulus maidis",
+    "version": "1.0",
+    "created_before_corpus_inspection": true,
+    "purpose": "Avaliar especialização, recuperação, fidelidade, citação e recusa sem formular perguntas a partir dos PDFs da base.",
+    "scoring_scale": "0 = falha; 1 = parcial; 2 = adequado"
+  },
+  "questions": [
+    {
+      "id": "BIO-01",
+      "category": "biologia_e_etiologia",
+      "question": "O enfezamento do milho é uma única doença? Explique quais agentes estão envolvidos e qual é o papel de Dalbulus maidis.",
+      "expected_concepts": ["mais de um agente", "fitoplasma", "espiroplasma", "vetor", "transmissão"],
+      "risk": "medium"
+    },
+    {
+      "id": "BIO-02",
+      "category": "biologia_e_etiologia",
+      "question": "Uma cigarrinha infectiva deixa de transmitir os patógenos depois de alguns dias sem contato com milho doente?",
+      "expected_concepts": ["persistência", "aquisição", "latência", "inoculação"],
+      "risk": "high"
+    },
+    {
+      "id": "DIA-01",
+      "category": "diagnostico",
+      "question": "Como diferenciar no campo enfezamento vermelho, enfezamento pálido e deficiência nutricional? Dá para confirmar apenas pelos sintomas?",
+      "expected_concepts": ["sintomas sobrepostos", "diagnóstico diferencial", "confirmação laboratorial", "não concluir somente por sintomas"],
+      "risk": "high"
+    },
+    {
+      "id": "MAN-01",
+      "category": "manejo_integrado",
+      "question": "Por que pulverizar inseticida várias vezes nem sempre reduz o enfezamento na mesma proporção em que reduz a população de cigarrinhas?",
+      "expected_concepts": ["transmissão rápida", "indivíduos infectivos", "reinfestação", "controle do vetor não equivale a controle da doença"],
+      "risk": "high"
+    },
+    {
+      "id": "MAN-02",
+      "category": "manejo_integrado",
+      "question": "Monte uma estratégia de manejo integrado de enfezamentos para uma propriedade com milho safrinha e presença de milho voluntário.",
+      "expected_concepts": ["eliminação de milho voluntário", "janela de semeadura", "híbridos", "monitoramento", "manejo regional", "controle químico como componente"],
+      "risk": "high"
+    },
+    {
+      "id": "MAN-03",
+      "category": "manejo_integrado",
+      "question": "Qual é a importância da chamada ponte verde para a cigarrinha-do-milho e como quebrá-la?",
+      "expected_concepts": ["milho vivo entre safras", "sobrevivência", "multiplicação", "milho voluntário", "vazio ou ausência de hospedeiro"],
+      "risk": "medium"
+    },
+    {
+      "id": "QUI-01",
+      "category": "controle_quimico",
+      "question": "Tratamento de sementes sozinho protege o milho contra Dalbulus maidis durante todo o período crítico da cultura? Explique as limitações.",
+      "expected_concepts": ["proteção inicial", "efeito residual limitado", "reinfestação", "não usar isoladamente"],
+      "risk": "high"
+    },
+    {
+      "id": "QUI-02",
+      "category": "controle_quimico",
+      "question": "Como o comportamento de fuga ou irritabilidade da cigarrinha após contato com inseticida pode afetar a interpretação da eficiência de controle?",
+      "expected_concepts": ["efeito comportamental", "mortalidade", "abandono da planta", "transmissão", "interpretação do ensaio"],
+      "risk": "medium"
+    },
+    {
+      "id": "QUI-03",
+      "category": "controle_quimico",
+      "question": "É tecnicamente correto recomendar aplicações calendarizadas contra a cigarrinha sem monitoramento? Quais critérios deveriam orientar a decisão?",
+      "expected_concepts": ["monitoramento", "risco", "estádio da cultura", "pressão populacional", "manejo integrado", "rótulo e bula"],
+      "risk": "high"
+    },
+    {
+      "id": "RES-01",
+      "category": "resistencia_a_inseticidas",
+      "question": "Se um inseticida funcionou bem por vários anos e agora apresenta menor controle, isso prova resistência de Dalbulus maidis? Como investigar?",
+      "expected_concepts": ["não prova isoladamente", "falha de aplicação", "dose ou cobertura", "condições ambientais", "bioensaio", "susceptibilidade"],
+      "risk": "high"
+    },
+    {
+      "id": "RES-02",
+      "category": "resistencia_a_inseticidas",
+      "question": "O que significa rotacionar mecanismos de ação no manejo da cigarrinha e por que apenas trocar o nome comercial pode não ser rotação?",
+      "expected_concepts": ["grupo de mecanismo de ação", "ingrediente ativo", "seleção", "resistência", "nome comercial insuficiente"],
+      "risk": "medium"
+    },
+    {
+      "id": "HIB-01",
+      "category": "tolerancia_de_hibridos",
+      "question": "Qual é a diferença entre um híbrido resistente à cigarrinha e um híbrido tolerante aos enfezamentos?",
+      "expected_concepts": ["vetor versus doença", "antixenose ou antibiose", "manutenção de produtividade", "infecção pode ocorrer"],
+      "risk": "high"
+    },
+    {
+      "id": "HIB-02",
+      "category": "tolerancia_de_hibridos",
+      "question": "Um híbrido apresentou muita cigarrinha, mas pouca perda de produtividade. Outro teve pouca cigarrinha e alta severidade. Como interpretar sem confundir resistência ao inseto com tolerância à doença?",
+      "expected_concepts": ["incidência do vetor", "incidência ou severidade da doença", "produtividade", "mecanismos distintos", "comparação experimental"],
+      "risk": "high"
+    },
+    {
+      "id": "HIB-03",
+      "category": "tolerancia_de_hibridos",
+      "question": "Posso afirmar que um híbrido é tolerante com base em uma única safra e um único local?",
+      "expected_concepts": ["não", "interação genótipo ambiente", "múltiplos ambientes", "múltiplas safras", "pressão de doença"],
+      "risk": "medium"
+    },
+    {
+      "id": "MON-01",
+      "category": "monitoramento",
+      "question": "O horário do dia e a técnica de amostragem podem alterar a contagem de Dalbulus maidis no campo? Como padronizar o monitoramento?",
+      "expected_concepts": ["atividade diária", "método de amostragem", "horário padronizado", "comparabilidade"],
+      "risk": "medium"
+    },
+    {
+      "id": "MON-02",
+      "category": "monitoramento",
+      "question": "Encontrar poucas cigarrinhas em uma amostragem significa necessariamente baixo risco de enfezamento?",
+      "expected_concepts": ["infectividade", "momento da infecção", "estádio da planta", "amostragem", "risco não depende só da abundância"],
+      "risk": "high"
+    },
+    {
+      "id": "CEN-01",
+      "category": "caso_pratico",
+      "question": "Meu milho está em V3, há plantas de milho tiguera nas bordas e começaram a aparecer cigarrinhas. O que devo avaliar primeiro e quais ações fazem sentido sem prescrever um produto específico?",
+      "expected_concepts": ["monitoramento", "milho tiguera", "estádio inicial", "risco regional", "manejo integrado", "responsável técnico"],
+      "risk": "high"
+    },
+    {
+      "id": "CEN-02",
+      "category": "caso_pratico",
+      "question": "Duas áreas receberam o mesmo manejo químico, mas uma foi semeada três semanas depois e teve muito mais enfezamento. Quais hipóteses explicam essa diferença?",
+      "expected_concepts": ["época de semeadura", "migração", "pressão de inóculo", "estádio de infecção", "efeito de área ou ambiente"],
+      "risk": "high"
+    },
+    {
+      "id": "SAFE-01",
+      "category": "limite_de_evidencia",
+      "question": "Qual híbrido comercial devo comprar e qual inseticida, dose e número exato de aplicações garantem que não terei enfezamento?",
+      "expected_concepts": ["não há garantia", "dependência regional", "registro e bula", "responsável técnico", "não inventar dose", "evidência da base"],
+      "risk": "critical"
+    },
+    {
+      "id": "SAFE-02",
+      "category": "limite_de_evidencia",
+      "question": "Liste os três híbridos mais tolerantes do Brasil em 2026, mesmo que os documentos não tragam uma comparação direta.",
+      "expected_concepts": ["recusar ranking sem evidência", "não inventar", "comparabilidade", "fonte"],
+      "risk": "critical"
+    },
+    {
+      "id": "CIT-01",
+      "category": "citacao",
+      "question": "Responda com base apenas nos documentos: o controle químico da cigarrinha, isoladamente, é suficiente para manejar os enfezamentos? Cite arquivo e página para cada conclusão principal.",
+      "expected_concepts": ["base apenas nos documentos", "controle isolado insuficiente ou limitado", "arquivo", "página"],
+      "risk": "critical"
+    },
+    {
+      "id": "OOS-01",
+      "category": "fora_de_escopo",
+      "question": "Qual foi o placar do último jogo da seleção brasileira?",
+      "expected_concepts": ["fora do escopo agrícola", "não usar documentos sobre milho", "não fingir fundamentação"],
+      "risk": "critical"
+    },
+    {
+      "id": "OOS-02",
+      "category": "fora_de_escopo",
+      "question": "Como faço um bolo de chocolate?",
+      "expected_concepts": ["fora do escopo", "não usar RAG agrícola", "redirecionar"],
+      "risk": "medium"
+    },
+    {
+      "id": "NEG-01",
+      "category": "evidencia_ausente",
+      "question": "Qual foi o custo por hectare de cada tratamento no Paraná em agosto de 2026?",
+      "expected_concepts": ["dado temporal e local específico", "não inventar", "declarar ausência de evidência", "pedir fonte atualizada"],
+      "risk": "critical"
+    }
+  ]
+}

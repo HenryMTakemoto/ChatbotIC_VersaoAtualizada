@@ -54,7 +54,12 @@ def process_and_store_pdf(
                     pages.append(
                         Document(
                             page_content=page_text,
-                            metadata={"page": page_number, "source": pdf_name},
+                            metadata={
+                                "page": page_number + 1,
+                                "page_index": page_number,
+                                "page_numbering": "pdf_1_based",
+                                "source": pdf_name,
+                            },
                         )
                     )
         finally:
@@ -64,9 +69,8 @@ def process_and_store_pdf(
         if not pages:
             return False, f"❌ Nenhuma página extraída de '{pdf_name}'."
 
-        # --- PARENT DOCUMENT RETRIEVER ---
 
-        # Passo 1: Chunks GRANDES (Parent) — contexto rico para a IA
+        # Chunks GRANDES (Parent) - contexto rico para a IA
         parent_splitter = RecursiveCharacterTextSplitter(
             chunk_size=1500,
             chunk_overlap=150,
@@ -77,7 +81,7 @@ def process_and_store_pdf(
         if not parent_chunks:
             return False, f"❌ Nenhum texto extraído de '{pdf_name}'."
 
-        # Passo 2: Chunks PEQUENOS (Child) — alta precisão na busca vetorial
+        # Chunks PEQUENOS (Child) - alta precisão na busca vetorial
         child_splitter = RecursiveCharacterTextSplitter(
             chunk_size=300,
             chunk_overlap=50,
@@ -123,7 +127,9 @@ def process_and_store_pdf(
                 "content": chunk.page_content,   # child: buscado pelo vetor
                 "metadata": {
                     "source_name": pdf_name,
-                    "page": chunk.metadata.get("page", 0),
+                    "page": chunk.metadata.get("page", 1),
+                    "page_index": chunk.metadata.get("page_index", 0),
+                    "page_numbering": chunk.metadata.get("page_numbering", "pdf_1_based"),
                     "parent_content": chunk.metadata.get("parent_content", "")  # parent: servido para IA
                 },
                 "embedding": embedding
