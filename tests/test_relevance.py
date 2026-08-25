@@ -1,10 +1,12 @@
 import unittest
+from unittest.mock import patch
 
 from rag.relevance import (
     filter_by_vector_similarity,
     is_domain_query,
     question_requires_history,
 )
+from rag.retriever import rank_candidates
 
 
 class DomainRoutingTests(unittest.TestCase):
@@ -50,6 +52,27 @@ class SimilarityGateTests(unittest.TestCase):
         ]
         accepted = filter_by_vector_similarity(chunks, 0.30)
         self.assertEqual([item["content"] for item in accepted], ["limite", "alto"])
+
+
+class CandidateRankingTests(unittest.TestCase):
+    @patch("rag.retriever._feature_enabled", return_value=False)
+    @patch("rag.retriever.score_pairs")
+    def test_disabled_reranker_preserves_vector_order(
+        self, score_pairs_mock, _feature_enabled_mock
+    ):
+        chunks = [
+            {"content": "menor", "similarity": 0.61},
+            {"content": "maior", "similarity": 0.81},
+            {"content": "intermediário", "similarity": 0.74},
+        ]
+
+        ranked = rank_candidates("pergunta em português", chunks)
+
+        self.assertEqual(
+            [item["content"] for item in ranked],
+            ["maior", "intermediário", "menor"],
+        )
+        score_pairs_mock.assert_not_called()
 
 
 if __name__ == "__main__":

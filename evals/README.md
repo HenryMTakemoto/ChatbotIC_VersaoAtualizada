@@ -16,7 +16,7 @@ python3 evals/evaluate_corpus.py \
   --json-out /tmp/relatorio_corpus.json
 ```
 
-BM25 não substitui os embeddings e o reranker do chatbot. Seu papel é detectar
+BM25 não substitui os embeddings e o reranker opcional do chatbot. Seu papel é detectar
 lacunas óbvias no corpus e oferecer um teste reproduzível para comparação.
 
 ## Avaliação ponta a ponta

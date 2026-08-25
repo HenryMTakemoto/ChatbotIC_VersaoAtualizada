@@ -120,6 +120,8 @@ NVIDIA_API_KEY           = "sua-nvidia-api-key"
 HF_TOKEN                 = "seu-token-huggingface"
 # O Multi-Query custa uma chamada extra e fica desligado até demonstrar ganho
 ENABLE_MULTI_QUERY       = false
+# O reranqueador atual é inglês; mantenha desligado para perguntas em português
+ENABLE_RERANKER          = false
 # Opcionais: permitem trocar modelos sem editar o código
 GROQ_ANSWER_MODEL        = "openai/gpt-oss-120b"
 GROQ_UTILITY_MODEL       = "openai/gpt-oss-20b"

@@ -3,7 +3,6 @@ from time import perf_counter
 
 from .embeddings import embed_texts, score_pairs
 from .relevance import filter_by_vector_similarity, is_domain_query
-from db.supabase_client import get_supabase
 
 
 QUERY_VARIATION_COUNT = 1
@@ -246,6 +245,40 @@ def select_unique_parent_chunks(chunks: list, top_k: int) -> list:
     return selected
 
 
+def rank_candidates(query: str, chunks: list) -> list:
+    """Ordena candidatos, usando o Cross-Encoder somente quando habilitado.
+    """
+    ranked = sorted(
+        chunks,
+        key=lambda item: float(item.get("similarity") or 0),
+        reverse=True,
+    )[:RERANK_CANDIDATE_COUNT]
+
+    if not _feature_enabled("ENABLE_RERANKER"):
+        print(
+            "[Rerank] Desativado; mantendo ordem da similaridade vetorial multilíngue.",
+            flush=True,
+        )
+        return ranked
+
+    try:
+        pairs = [(query, chunk.get("content", "")) for chunk in ranked]
+        scores = score_pairs(pairs)
+
+        for chunk, score in zip(ranked, scores):
+            chunk["rerank_score"] = float(score)
+
+        ranked.sort(key=lambda item: item["rerank_score"], reverse=True)
+    except Exception as e:
+        print(
+            f"[Rerank] Cross-Encoder indisponível; usando similaridade vetorial: "
+            f"{str(e)[:200]}",
+            flush=True,
+        )
+
+    return ranked
+
+
 def hybrid_search(query: str, user_id: str | None = None, top_k: int = 5) -> str:
     """
     Pipeline de busca RAG especializado:
@@ -253,7 +286,7 @@ def hybrid_search(query: str, user_id: str | None = None, top_k: int = 5) -> str
     2. Self-Querying: detecta filtros explícitos de documento
     3. Multi-Query opcional: só é ativado quando medido/configurado
     4. Busca vetorial, deduplicação e limiar mínimo de relevância
-    5. Re-ranking de até 15 candidatos
+    5. Re-ranking opcional de até 15 candidatos (desligado por padrão)
     6. Formatação do parent com fonte e página verificáveis
 
     Retorna contexto formatado como string, ou string vazia se nada encontrado.
@@ -262,6 +295,8 @@ def hybrid_search(query: str, user_id: str | None = None, top_k: int = 5) -> str
     if not is_domain_query(query, mentions_document=mentions_document):
         print("[RAG] Busca ignorada: pergunta fora do domínio da base.", flush=True)
         return ""
+
+    from db.supabase_client import get_supabase
 
     supabase = get_supabase()
 
@@ -297,7 +332,11 @@ def hybrid_search(query: str, user_id: str | None = None, top_k: int = 5) -> str
 
     # Deduplicação — remove chunks repetidos entre as variações
     chunks = deduplicate_chunks(all_chunks)
-    print(f"[MultiQuery] {len(all_chunks)} chunks brutos → {len(chunks)} após deduplicação")
+    search_label = "MultiQuery" if len(query_variations) > 1 else "RAG"
+    print(
+        f"[{search_label}] {len(all_chunks)} chunks brutos → "
+        f"{len(chunks)} após deduplicação"
+    )
 
     # Filtro em memória por metadados (Self-Querying)
     chunks = apply_metadata_filter(chunks, filters)
@@ -320,35 +359,8 @@ def hybrid_search(query: str, user_id: str | None = None, top_k: int = 5) -> str
         )
         return ""
 
-    # pré-seleciona por similaridade e limita o Cross-Encoder. Em caso
-    # de falha do modelo local, a busca vetorial continua entregando resultados.
-    chunks.sort(key=lambda x: float(x.get("similarity") or 0), reverse=True)
-    rerank_candidates = chunks[:RERANK_CANDIDATE_COUNT]
-
-    try:
-        pairs = [
-            (query, chunk.get("content", ""))
-            for chunk in rerank_candidates
-        ]
-        scores = score_pairs(pairs)
-
-        for chunk, score in zip(rerank_candidates, scores):
-            chunk["rerank_score"] = float(score)
-
-        rerank_candidates.sort(
-            key=lambda x: x["rerank_score"],
-            reverse=True,
-        )
-    except Exception as e:
-        print(
-            f"[Rerank] Cross-Encoder indisponível; usando similaridade vetorial: "
-            f"{str(e)[:200]}",
-            flush=True,
-        )
-        for chunk in rerank_candidates:
-            chunk["rerank_score"] = float(chunk.get("similarity") or 0)
-
-    top_chunks = select_unique_parent_chunks(rerank_candidates, top_k)
+    ranked_candidates = rank_candidates(query, chunks)
+    top_chunks = select_unique_parent_chunks(ranked_candidates, top_k)
 
     # Formata contexto para o LLM
     context_parts = []
@@ -363,7 +375,6 @@ def hybrid_search(query: str, user_id: str | None = None, top_k: int = 5) -> str
             except (TypeError, ValueError):
                 pass
         cosine_sim = chunk.get("similarity", 0)
-        rerank_score = chunk.get("rerank_score", 0)
 
         # Parent Document Retriever: serve o trecho pai (1500 chars, rico em contexto)
         parent_content = metadata.get("parent_content", "")
@@ -374,9 +385,13 @@ def hybrid_search(query: str, user_id: str | None = None, top_k: int = 5) -> str
             f"{content_to_serve}"
         )
 
+        ranking_details = f"Vector={cosine_sim:.2f}"
+        if "rerank_score" in chunk:
+            ranking_details = (
+                f"Cross={chunk['rerank_score']:.2f}, {ranking_details}"
+            )
         print(
-            f"[RAG] Trecho {i}: {source}, p. {page}, "
-            f"Cross={rerank_score:.2f}, Vector={cosine_sim:.2f}",
+            f"[RAG] Trecho {i}: {source}, p. {page}, {ranking_details}",
             flush=True,
         )
 

@@ -1,8 +1,6 @@
 from functools import lru_cache
 from time import perf_counter
 
-import streamlit as st
-
 
 MODEL_NAME = "paraphrase-multilingual-MiniLM-L12-v2"
 CROSS_ENCODER_MODEL_NAME = "cross-encoder/ms-marco-MiniLM-L-6-v2"
@@ -10,6 +8,8 @@ CROSS_ENCODER_MODEL_NAME = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
 def _model_auth_kwargs() -> dict:
     """Usa o token do Hugging Face quando configurado no Streamlit."""
+    import streamlit as st
+
     token = st.secrets.get("HF_TOKEN", "")
     return {"token": token} if token else {}
 
