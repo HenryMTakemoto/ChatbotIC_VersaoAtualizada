@@ -2,7 +2,11 @@ import re
 from time import perf_counter
 
 from .embeddings import embed_texts, score_pairs
-from .relevance import filter_by_vector_similarity, is_domain_query
+from .relevance import (
+    filter_by_vector_similarity,
+    filter_probable_bibliography,
+    is_domain_query,
+)
 
 
 QUERY_VARIATION_COUNT = 1
@@ -359,6 +363,18 @@ def hybrid_search(query: str, user_id: str | None = None, top_k: int = 5) -> str
         )
         return ""
 
+    candidates_before_bibliography_filter = len(chunks)
+    chunks = filter_probable_bibliography(chunks)
+    removed_bibliography = candidates_before_bibliography_filter - len(chunks)
+    if removed_bibliography:
+        print(
+            f"[RAG] {removed_bibliography} candidato(s) de bibliografia removido(s).",
+            flush=True,
+        )
+    if not chunks:
+        print("[RAG] Restaram apenas páginas de bibliografia.", flush=True)
+        return ""
+
     ranked_candidates = rank_candidates(query, chunks)
     top_chunks = select_unique_parent_chunks(ranked_candidates, top_k)
 
@@ -381,7 +397,9 @@ def hybrid_search(query: str, user_id: str | None = None, top_k: int = 5) -> str
         content_to_serve = parent_content if parent_content else chunk.get("content", "")
 
         context_parts.append(
-            f"[Trecho {i}] [Fonte: {source}, página do PDF: {page}]\n"
+            f"DOCUMENTO RECUPERADO {i}\n"
+            f"CITAÇÃO OBRIGATÓRIA: [{source}, p. {page}]\n"
+            f"CONTEÚDO:\n"
             f"{content_to_serve}"
         )
 

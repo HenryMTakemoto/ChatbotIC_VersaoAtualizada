@@ -82,3 +82,34 @@ def filter_by_vector_similarity(chunks: list, minimum: float) -> list:
         if similarity >= minimum:
             accepted.append(chunk)
     return accepted
+
+
+def is_probable_bibliography(text: str) -> bool:
+    """Detecta páginas de referências que não devem sustentar respostas."""
+    if not text:
+        return False
+
+    normalized = normalize(text)
+    if re.search(
+        r"(?m)^\s*(references|bibliografia|referencias bibliograficas)\s*$",
+        normalized,
+    ):
+        return True
+
+    doi_mentions = max(
+        len(re.findall(r"\bdoi\s*:", normalized)),
+        len(re.findall(r"doi\.org/", normalized)),
+    )
+    url_mentions = len(re.findall(r"https?\s*:\s*//", normalized))
+    return doi_mentions >= 2 or url_mentions >= 3
+
+
+def filter_probable_bibliography(chunks: list) -> list:
+    """Remove candidatos cujo conteúdo pai aparenta ser bibliografia."""
+    accepted = []
+    for chunk in chunks:
+        metadata = chunk.get("metadata", {})
+        text = metadata.get("parent_content") or chunk.get("content", "")
+        if not is_probable_bibliography(text):
+            accepted.append(chunk)
+    return accepted

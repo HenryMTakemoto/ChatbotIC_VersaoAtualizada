@@ -3,6 +3,8 @@ from unittest.mock import patch
 
 from rag.relevance import (
     filter_by_vector_similarity,
+    filter_probable_bibliography,
+    is_probable_bibliography,
     is_domain_query,
     question_requires_history,
 )
@@ -52,6 +54,41 @@ class SimilarityGateTests(unittest.TestCase):
         ]
         accepted = filter_by_vector_similarity(chunks, 0.30)
         self.assertEqual([item["content"] for item in accepted], ["limite", "alto"])
+
+
+class BibliographyFilterTests(unittest.TestCase):
+    def test_reference_page_with_multiple_dois_is_detected(self):
+        text = (
+            "AUTOR. Título. Revista, 2019. DOI: https://doi.org/10.1000/a. "
+            "OUTRO. Título. Revista, 2022. DOI: https://doi.org/10.1000/b."
+        )
+        self.assertTrue(is_probable_bibliography(text))
+
+    def test_article_abstract_with_single_doi_is_preserved(self):
+        text = (
+            "DOI: https://doi.org/10.1000/artigo. Resumo: Dalbulus maidis "
+            "transmite fitopatógenos e os resultados demonstraram diferenças."
+        )
+        self.assertFalse(is_probable_bibliography(text))
+
+    def test_filter_uses_parent_content(self):
+        chunks = [
+            {
+                "content": "resultado relevante",
+                "metadata": {"parent_content": "Resultados do experimento em milho."},
+            },
+            {
+                "content": "referência",
+                "metadata": {
+                    "parent_content": (
+                        "REFERÊNCIAS\nDOI: https://doi.org/10.1/a\n"
+                        "DOI: https://doi.org/10.1/b"
+                    )
+                },
+            },
+        ]
+        accepted = filter_probable_bibliography(chunks)
+        self.assertEqual([item["content"] for item in accepted], ["resultado relevante"])
 
 
 class CandidateRankingTests(unittest.TestCase):

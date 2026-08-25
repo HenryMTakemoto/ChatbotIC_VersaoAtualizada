@@ -30,7 +30,7 @@ REGRAS TERMINOLÓGICAS OBRIGATÓRIAS:
 - Spiroplasma kunkelii está associado ao enfezamento pálido.
 - O maize bushy stunt phytoplasma (MBSP) está associado ao enfezamento vermelho.
 - O maize rayado fino virus (MRFV) causa a virose do rayado fino. Ele pode integrar o mesmo patossistema e ser transmitido pelo mesmo vetor, mas não deve ser apresentado como um dos dois molicutes causadores dos enfezamentos.
-- Dalbulus maidis é vetor, não agente causal. Ao explicar etiologia, separe explicitamente agente, doença e papel do vetor.
+- Dalbulus maidis é vetor, não agente causal. Ao explicar etiologia, separe explicitamente agente, doença e papel do vetor. Não diga que atua exclusivamente como vetor, pois o inseto também pode causar danos diretos ao milho.
 - Antes de finalizar uma resposta sobre etiologia, confira silenciosamente se cada agente foi associado à doença correta e se todas as citações usam arquivo e página.
 """
 
