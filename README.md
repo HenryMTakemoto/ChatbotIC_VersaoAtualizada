@@ -23,6 +23,7 @@ responder com fonte e página verificáveis.
 - **Base pessoal**: documentos privados de cada usuário
 - Combinação automática das duas bases em cada consulta
 - Roteamento de domínio e limiar mínimo de relevância para não apresentar qualquer vizinho vetorial como evidência
+- Hierarquia de evidência: base documental citada, conhecimento geral explicitamente identificado, limitação para afirmações de alto risco e recusa fora do domínio
 - Painel administrativo com perguntas cegas para diagnosticar a recuperação sem gastar tokens da LLM final
 
 ### Autenticação
@@ -114,6 +115,8 @@ SUPABASE_URL             = "https://<project-id>.supabase.co"
 SUPABASE_PUBLISHABLE_KEY = "sua-anon-key"
 SUPABASE_SECRET_KEY      = "sua-service-role-key"
 TELEGRAM_TOKEN           = "seu-token-do-bot"
+# Use false no ambiente local para não disputar o bot com o deploy
+ENABLE_TELEGRAM_BOT      = false
 GROQ_API_KEY             = "sua-groq-api-key"
 NVIDIA_API_KEY           = "sua-nvidia-api-key"
 # Opcional: evita downloads anônimos e lentos dos modelos de embeddings
@@ -125,14 +128,21 @@ ENABLE_RERANKER          = false
 # Opcionais: permitem trocar modelos sem editar o código
 GROQ_ANSWER_MODEL        = "openai/gpt-oss-120b"
 GROQ_UTILITY_MODEL       = "openai/gpt-oss-20b"
+GROQ_ANSWER_REASONING_EFFORT = "low"
+LLM_ANSWER_MAX_TOKENS    = 1200
 RAG_MIN_VECTOR_SIMILARITY = 0.30
+# Opcional: limita quanto uma consulta de busca pode bloquear a resposta
+SUPABASE_QUERY_TIMEOUT_SECONDS = 20
 ```
 
 Inicie a aplicação:
 
 ```bash
-streamlit run app.py
+.venv/bin/streamlit run app.py
 ```
+
+Para testes locais, mantenha `ENABLE_TELEGRAM_BOT=false` e copie os secrets do
+Streamlit Cloud para `.streamlit/secrets.toml`. Esse arquivo é ignorado pelo Git.
 
 ### Deploy no Streamlit Cloud
 

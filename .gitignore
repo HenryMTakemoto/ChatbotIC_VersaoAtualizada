@@ -1,3 +1,7 @@
 .streamlit/secrets.toml
+.venv/
 __pycache__/
 Contexto/
+APRESENTACAO_SIMPOSIO_CHATBOT_RAG.md
+CHECKLIST_PRE_ENTREGA.md
+comparacao.md

@@ -11,6 +11,13 @@ from .bot import (
 )
 
 
+def _telegram_enabled() -> bool:
+    value = st.secrets.get("ENABLE_TELEGRAM_BOT", True)
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on", "sim"}
+    return bool(value)
+
+
 def run_telegram_bot():
     """Executa o bot do Telegram em thread separada com seu próprio event loop."""
     loop = asyncio.new_event_loop()
@@ -38,6 +45,10 @@ def run_telegram_bot():
 @st.cache_resource
 def start_background_bot():
     """Inicia o bot em daemon thread — executado uma única vez pelo Streamlit."""
+    if not _telegram_enabled():
+        print("[Telegram] Desativado pela configuração.", flush=True)
+        return None
+
     t = threading.Thread(target=run_telegram_bot, daemon=True)
     t.start()
     return t

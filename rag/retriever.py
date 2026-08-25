@@ -3,6 +3,8 @@ from time import perf_counter
 
 from .embeddings import embed_texts, score_pairs
 from .relevance import (
+    add_lexical_retrieval_scores,
+    build_domain_search_queries,
     filter_by_vector_similarity,
     filter_probable_bibliography,
     is_domain_query,
@@ -15,6 +17,12 @@ MIN_VECTOR_SIMILARITY = 0.30
 MIN_FILTERED_VECTOR_SIMILARITY = 0.20
 DOCUMENT_REFERENCE_PATTERN = re.compile(
     r"(?:\b(?:arquivos?|documentos?|pdfs?|manuais?|relatórios?|relatorios?|apostilas?|cartilhas?)\b|\.pdf\b)",
+    re.IGNORECASE,
+)
+SPECIFIC_DOCUMENT_REFERENCE_PATTERN = re.compile(
+    r"(?:[^\s\"']+\.pdf\b|"
+    r"\b(?:arquivo|documento|manual|relatório|relatorio|apostila|cartilha)"
+    r"\s+(?:chamado|intitulado|de|sobre)\s+[a-z0-9_À-ÿ-]{3,})",
     re.IGNORECASE,
 )
 
@@ -84,8 +92,11 @@ def extract_metadata_filter(question: str) -> dict:
     """
     # A maioria das perguntas agronômicas não cita um documento. Evita uma
     # chamada de LLM sem alterar o comportamento das perguntas sobre arquivos.
-    if not DOCUMENT_REFERENCE_PATTERN.search(question):
-        print("[SelfQuery] Ignorado: pergunta sem referência a documento.", flush=True)
+    if not SPECIFIC_DOCUMENT_REFERENCE_PATTERN.search(question):
+        print(
+            "[SelfQuery] Ignorado: pergunta sem nome de documento específico.",
+            flush=True,
+        )
         return {}
 
     import json
@@ -230,6 +241,18 @@ def deduplicate_chunks(all_chunks: list) -> list:
     return list(seen_content.values())
 
 
+def deduplicate_queries(queries: list[str]) -> list[str]:
+    """Remove consultas repetidas preservando a ordem de geração."""
+    unique = []
+    seen = set()
+    for query in queries:
+        key = query.strip().lower()
+        if key and key not in seen:
+            seen.add(key)
+            unique.append(query)
+    return unique
+
+
 def select_unique_parent_chunks(chunks: list, top_k: int) -> list:
     """Evita enviar o mesmo parent_content repetido ao LLM."""
     selected = []
@@ -254,7 +277,9 @@ def rank_candidates(query: str, chunks: list) -> list:
     """
     ranked = sorted(
         chunks,
-        key=lambda item: float(item.get("similarity") or 0),
+        key=lambda item: float(
+            item.get("retrieval_score", item.get("similarity")) or 0
+        ),
         reverse=True,
     )[:RERANK_CANDIDATE_COUNT]
 
@@ -307,23 +332,49 @@ def hybrid_search(query: str, user_id: str | None = None, top_k: int = 5) -> str
     # Self-Querying — detecta filtros de metadados
     filters = extract_metadata_filter(query)
 
-    # Multi-Query — gera variações semânticas da pergunta
-    query_variations = generate_query_variations(query)
+    semantic_variations = generate_query_variations(query)
+    query_variations = deduplicate_queries([
+        search_query
+        for variation in semantic_variations
+        for search_query in build_domain_search_queries(variation)
+    ])
+    semantic_query_keys = {
+        variation.strip().lower() for variation in semantic_variations
+    }
+    lexical_queries = [
+        variation for variation in query_variations
+        if variation.strip().lower() not in semantic_query_keys
+    ]
+    if lexical_queries:
+        print(
+            f"[QueryExpansion] {len(query_variations)} consultas, "
+            "sem chamada adicional de LLM.",
+            flush=True,
+        )
 
     # gera todos os embeddings em um único lote e faz a busca.
-    # Dez candidatos por query preservam recall suficiente antes do re-ranking.
-    fetch_count = max(top_k * 2, 10)
+    # O conjunto inicial amplo preserva recall para o híbrido vetorial-lexical.
+    fetch_count = max(top_k * 6, 30)
     search_started_at = perf_counter()
     query_embeddings = embed_texts(query_variations)
     all_chunks = []
-    for embedding in query_embeddings:
-        variation_chunks = fetch_chunks_for_query(
-            supabase,
-            embedding,
-            fetch_count,
-            user_id,
-        )
-        all_chunks.extend(variation_chunks)
+    failed_queries = 0
+    for query_index, embedding in enumerate(query_embeddings, 1):
+        try:
+            variation_chunks = fetch_chunks_for_query(
+                supabase,
+                embedding,
+                fetch_count,
+                user_id,
+            )
+            all_chunks.extend(variation_chunks)
+        except Exception as exc:
+            failed_queries += 1
+            print(
+                f"[RAG] Consulta {query_index}/{len(query_embeddings)} falhou "
+                f"({type(exc).__name__}: {str(exc)[:160]}).",
+                flush=True,
+            )
 
     print(
         f"[Performance] Busca de {len(query_variations)} queries no Supabase em "
@@ -331,12 +382,24 @@ def hybrid_search(query: str, user_id: str | None = None, top_k: int = 5) -> str
         flush=True,
     )
 
+    if failed_queries and all_chunks:
+        print(
+            f"[RAG] Recuperação parcial: {failed_queries} consulta(s) falharam; "
+            "usando as evidências obtidas pelas demais.",
+            flush=True,
+        )
+    elif failed_queries == len(query_embeddings):
+        print(
+            "[RAG] Base documental temporariamente indisponível para esta busca.",
+            flush=True,
+        )
+
     if not all_chunks:
         return ""
 
     # Deduplicação — remove chunks repetidos entre as variações
     chunks = deduplicate_chunks(all_chunks)
-    search_label = "MultiQuery" if len(query_variations) > 1 else "RAG"
+    search_label = "RAG"
     print(
         f"[{search_label}] {len(all_chunks)} chunks brutos → "
         f"{len(chunks)} após deduplicação"
@@ -375,6 +438,8 @@ def hybrid_search(query: str, user_id: str | None = None, top_k: int = 5) -> str
         print("[RAG] Restaram apenas páginas de bibliografia.", flush=True)
         return ""
 
+    if lexical_queries:
+        chunks = add_lexical_retrieval_scores(chunks, lexical_queries)
     ranked_candidates = rank_candidates(query, chunks)
     top_chunks = select_unique_parent_chunks(ranked_candidates, top_k)
 
@@ -391,6 +456,8 @@ def hybrid_search(query: str, user_id: str | None = None, top_k: int = 5) -> str
             except (TypeError, ValueError):
                 pass
         cosine_sim = chunk.get("similarity", 0)
+        lexical_score = chunk.get("lexical_score", 0)
+        retrieval_score = chunk.get("retrieval_score", cosine_sim)
 
         # Parent Document Retriever: serve o trecho pai (1500 chars, rico em contexto)
         parent_content = metadata.get("parent_content", "")
@@ -403,7 +470,10 @@ def hybrid_search(query: str, user_id: str | None = None, top_k: int = 5) -> str
             f"{content_to_serve}"
         )
 
-        ranking_details = f"Vector={cosine_sim:.2f}"
+        ranking_details = (
+            f"Hybrid={retrieval_score:.2f}, Vector={cosine_sim:.2f}, "
+            f"Lexical={lexical_score:.2f}"
+        )
         if "rerank_score" in chunk:
             ranking_details = (
                 f"Cross={chunk['rerank_score']:.2f}, {ranking_details}"

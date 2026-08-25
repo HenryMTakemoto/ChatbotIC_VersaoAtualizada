@@ -2,12 +2,15 @@ import unittest
 from unittest.mock import patch
 
 from rag.relevance import (
+    add_lexical_retrieval_scores,
+    build_domain_search_queries,
     filter_by_vector_similarity,
     filter_probable_bibliography,
     is_probable_bibliography,
     is_domain_query,
     question_requires_history,
 )
+from rag.retriever import extract_metadata_filter
 from rag.retriever import rank_candidates
 
 
@@ -44,6 +47,65 @@ class ConversationalQueryTests(unittest.TestCase):
         )
 
 
+class SelfQueryCostTests(unittest.TestCase):
+    @patch("builtins.print")
+    def test_explicit_pdf_name_keeps_self_query_available(self, _mock_print):
+        with patch("llm.client.get_llm", return_value=None) as get_llm:
+            result = extract_metadata_filter(
+                "O que diz 2022-Pozebon_CornStunt.pdf?"
+            )
+
+        self.assertEqual(result, {})
+        get_llm.assert_called_once_with("utility")
+
+    @patch("builtins.print")
+    def test_generic_document_mention_does_not_call_llm(self, _mock_print):
+        with patch("llm.client.get_llm") as get_llm:
+            result = extract_metadata_filter(
+                "Responda mesmo que os documentos não tragam comparação direta."
+            )
+
+        self.assertEqual(result, {})
+        get_llm.assert_not_called()
+
+    @patch("builtins.print")
+    def test_question_without_document_does_not_call_llm(self, _mock_print):
+        with patch("llm.client.get_llm") as get_llm:
+            result = extract_metadata_filter("Explique o enfezamento pálido.")
+
+        self.assertEqual(result, {})
+        get_llm.assert_not_called()
+
+
+class QueryExpansionTests(unittest.TestCase):
+    def test_etiology_question_gets_causal_agent_terms(self):
+        queries = build_domain_search_queries(
+            "Quais agentes causam os enfezamentos do milho?"
+        )
+        self.assertEqual(len(queries), 2)
+        self.assertIn("Spiroplasma kunkelii", queries[1])
+        self.assertIn("maize bushy stunt phytoplasma", queries[1])
+
+    def test_transmission_question_gets_bilingual_technical_terms(self):
+        queries = build_domain_search_queries(
+            "Uma cigarrinha infectiva deixa de transmitir após alguns dias?"
+        )
+        self.assertEqual(len(queries), 2)
+        self.assertIn("persistent-propagative", queries[1])
+        self.assertIn("período latente", queries[1])
+
+    def test_diagnosis_question_gets_laboratory_terms(self):
+        queries = build_domain_search_queries(
+            "Dá para confirmar o diagnóstico somente pelos sintomas?"
+        )
+        self.assertIn("confirmação laboratorial", queries[1])
+        self.assertIn("mixed infection", queries[1])
+
+    def test_query_without_known_intent_is_not_expanded(self):
+        question = "Explique Dalbulus maidis"
+        self.assertEqual(build_domain_search_queries(question), [question])
+
+
 class SimilarityGateTests(unittest.TestCase):
     def test_only_chunks_at_or_above_threshold_are_kept(self):
         chunks = [
@@ -54,6 +116,32 @@ class SimilarityGateTests(unittest.TestCase):
         ]
         accepted = filter_by_vector_similarity(chunks, 0.30)
         self.assertEqual([item["content"] for item in accepted], ["limite", "alto"])
+
+
+class HybridRetrievalScoreTests(unittest.TestCase):
+    def test_technical_lexical_match_can_rescue_semantic_candidate(self):
+        chunks = [
+            {
+                "content": "controle químico de insetos na cultura",
+                "similarity": 0.71,
+            },
+            {
+                "content": (
+                    "persistent-propagative transmission with lifetime retention "
+                    "after acquisition and latent period"
+                ),
+                "similarity": 0.65,
+            },
+        ]
+        queries = [
+            "persistent-propagative transmission lifetime retention acquisition latent"
+        ]
+
+        scored = add_lexical_retrieval_scores(chunks, queries)
+        ranked = sorted(scored, key=lambda item: item["retrieval_score"], reverse=True)
+
+        self.assertIn("persistent-propagative", ranked[0]["content"])
+        self.assertGreater(ranked[0]["retrieval_score"], ranked[1]["retrieval_score"])
 
 
 class BibliographyFilterTests(unittest.TestCase):
@@ -70,6 +158,21 @@ class BibliographyFilterTests(unittest.TestCase):
             "transmite fitopatógenos e os resultados demonstraram diferenças."
         )
         self.assertFalse(is_probable_bibliography(text))
+
+    def test_reference_list_without_dois_is_detected(self):
+        text = (
+            "OLIVEIRA, C. M. Controle químico. Revista, 2007. "
+            "PERFECTO, I. Maize pest system. Ecology, 1990. "
+            "PICANÇO, M. C. Fatores de perdas. Acta, 2003."
+        )
+        self.assertTrue(is_probable_bibliography(text))
+
+    def test_tables_and_figures_caption_page_is_detected(self):
+        self.assertTrue(
+            is_probable_bibliography(
+                "TABLES AND FIGURES (CAPTIONS)\nTable 1. Visual vigor scale."
+            )
+        )
 
     def test_filter_uses_parent_content(self):
         chunks = [
