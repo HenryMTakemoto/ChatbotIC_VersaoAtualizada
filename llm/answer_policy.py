@@ -12,11 +12,31 @@ TRANSMISSION_TERMS = {
     "transmitir", "transmissao",
 }
 MANAGEMENT_TERMS = {
-    "inseticida", "inseticidas", "pulverizacao", "pulverizar", "pulverizacoes",
+    "aplicacao", "aplicacoes", "controle", "controlar", "inseticida",
+    "inseticidas", "manejo", "pulverizacao", "pulverizar", "pulverizacoes",
+    "tratamento", "tratamentos",
 }
 ETIOLOGY_TERMS = {
     "agente", "agentes", "causa", "causador", "causadores", "etiologia",
     "etiologico", "etiologicos",
+}
+CHEMICAL_CONTROL_TERMS = {
+    "agrotoxico", "agrotoxicos", "ativo", "ativos", "bula", "defensivo",
+    "defensivos", "dose", "doses", "ingrediente", "ingredientes",
+    "inseticida", "inseticidas", "produto", "produtos", "pulverizacao",
+    "pulverizar", "pulverizacoes", "tratamento", "tratamentos",
+}
+REGULATORY_TERMS = {
+    "agrofit", "autorizado", "autorizados", "legal", "permitido",
+    "permitidos", "proibido", "proibidos", "recomendado", "recomendados",
+    "registrado", "registrados", "registro", "vigente", "vigentes",
+}
+HYBRID_ENTITY_TERMS = {
+    "cultivar", "cultivares", "genotipo", "genotipos", "hibrido", "hibridos",
+}
+HYBRID_TOLERANCE_TERMS = {
+    "suscetibilidade", "suscetivel", "suscetiveis", "tolerancia", "tolerante",
+    "tolerantes",
 }
 
 
@@ -24,13 +44,35 @@ def build_answer_policy(question: str, documentary_context: str = "") -> str:
     """Define limites de resposta conforme a intenção técnica da pergunta."""
     question_tokens = tokens(question)
     context_tokens = tokens(documentary_context)
+    is_hybrid_question = bool(question_tokens & HYBRID_ENTITY_TERMS) or bool(
+        question_tokens & HYBRID_TOLERANCE_TERMS
+        and question_tokens & {"enfezamento", "enfezamentos", "doenca", "doencas"}
+    )
     rules = [
-        "Responda diretamente em até 180 palavras, sem tabela, citações textuais ou tópicos laterais.",
+        "Responda diretamente em até 220 palavras, sem tabela, citações textuais ou tópicos laterais.",
         "Para fatos sustentados pela base, use somente as citações fornecidas no contexto e coloque cada uma após a afirmação que ela sustenta.",
-        "Conhecimento geral necessário deve ficar em seção separada iniciada por 'Complemento de conhecimento geral (não localizado na base consultada):'; uma proibição específica abaixo prevalece.",
+        "Conhecimento geral pode complementar apenas conceitos de baixo risco e deve ficar em seção separada iniciada por 'Complemento de conhecimento geral (não localizado na base consultada):'; uma proibição específica abaixo prevalece.",
         "Sem evidência, apenas declare a limitação para doses, registros, diagnóstico definitivo, ranking de híbridos, garantias, custos ou recomendações locais.",
+        "Um artigo científico sustenta somente o que foi avaliado nas condições do estudo. Não transforme ingrediente estudado em produto atualmente registrado, resultado experimental em recomendação de campo, nem associação em mecanismo comprovado.",
         "Não mencione números internos como 'Trecho 1' ou 'Documento 2' na resposta.",
     ]
+
+    if question_tokens & (CHEMICAL_CONTROL_TERMS | REGULATORY_TERMS):
+        rules.extend([
+            "CONHECIMENTO GERAL PROIBIDO NESTA RESPOSTA.",
+            "Use apenas os trechos recuperados para nomes de ingredientes, grupos químicos, duração, eficácia e formas de aplicação; se não estiverem sustentados, declare a lacuna.",
+            "Não afirme que um ingrediente é registrado, permitido, recomendado ou vigente com base em artigo científico. Sem consulta oficial atual ao AGROFIT, informe que o registro atual não pode ser confirmado.",
+            "Ao mencionar um ingrediente presente no contexto, descreva-o somente como avaliado ou relatado no estudo, preservando data, ambiente e limitações disponíveis; não prescreva seu uso.",
+        ])
+
+    if is_hybrid_question:
+        rules.extend([
+            "CONHECIMENTO GERAL PROIBIDO NESTA RESPOSTA.",
+            "Diferencie resistência à cigarrinha, resistência ao patógeno e tolerância aos danos da doença; não trate esses fenótipos como sinônimos.",
+            "Tolerância ao enfezamento deve ser descrita pela manutenção relativa de desenvolvimento ou produtividade sob doença. Não atribua antixenose, antibiose, tricomas, cutícula, alteração da sondagem ou menor transmissão sem evidência direta para esse mecanismo e material.",
+            "Um estudo de comportamento de sondagem em híbridos resistentes ao inseto não demonstra, por si só, tolerância ao enfezamento.",
+            "Ao explicar resistência à cigarrinha, descreva apenas os efeitos medidos no contexto e preserve termos como 'pode' ou 'tipicamente'. Não invente uma causa física, química ou genética para o efeito observado.",
+        ])
 
     if question_tokens & DIAGNOSIS_TERMS:
         rules.extend([
@@ -77,6 +119,7 @@ def build_answer_policy(question: str, documentary_context: str = "") -> str:
             "Concentre-se na diferença entre mortalidade do vetor e prevenção da inoculação.",
             "Priorize tempo de inoculação, velocidade de ação, efeito residual e chegada de indivíduos infectantes; não acrescente aquisição, latência ou recomendações não pedidas.",
             "Não invente estádio da cultura, janela de proteção ou duração residual ausente do contexto.",
+            "Não afirme que existe limiar econômico ou nível de ação universal validado para Dalbulus maidis. A abundância do vetor, isoladamente, não determina o risco de enfezamento porque também importam infectividade, estádio da planta e pressão de inóculo.",
         ])
         for document in extract_context_documents(documentary_context):
             normalized_content = " ".join(document["content"].lower().split())

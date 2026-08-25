@@ -106,6 +106,20 @@ class CitationNormalizationTests(unittest.TestCase):
             "Em resumo, sintomas não confirmam o agente.",
         )
 
+    def test_removes_general_complement_for_high_risk_answer(self):
+        prompt = CONTEXT + "\nCONHECIMENTO GERAL PROIBIDO NESTA RESPOSTA."
+        response = (
+            "O estudo avaliou um tratamento [artigo_a.pdf, p. 5].\n\n"
+            "Complemento de conhecimento geral (não localizado na base "
+            "consultada):\nProduto inventado e supostamente registrado.\n\n"
+            "Em resumo, o registro vigente precisa de fonte oficial."
+        )
+        self.assertEqual(
+            apply_response_guards(response, prompt),
+            "O estudo avaliou um tratamento [artigo_a.pdf, p. 5].\n\n"
+            "Em resumo, o registro vigente precisa de fonte oficial.",
+        )
+
 
 class TruncationDetectionTests(unittest.TestCase):
     def test_detects_length_finish_reason(self):

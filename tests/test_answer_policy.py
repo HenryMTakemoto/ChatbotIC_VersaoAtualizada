@@ -6,6 +6,7 @@ from llm.answer_policy import build_answer_policy
 class AnswerPolicyTests(unittest.TestCase):
     def test_all_answers_receive_evidence_hierarchy(self):
         policy = build_answer_policy("Explique a cigarrinha-do-milho")
+        self.assertIn("até 220 palavras", policy)
         self.assertIn("Complemento de conhecimento geral", policy)
         self.assertIn("declare a limitação", policy)
         self.assertIn("Não mencione números internos", policy)
@@ -51,6 +52,45 @@ class AnswerPolicyTests(unittest.TestCase):
         self.assertIn("mortalidade do vetor", policy)
         self.assertIn("não acrescente aquisição, latência", policy)
         self.assertIn("Não invente estádio da cultura", policy)
+        self.assertIn("limiar econômico", policy)
+
+    def test_chemical_control_forbids_general_knowledge_and_current_registration(self):
+        policy = build_answer_policy(
+            "Quais inseticidas registrados são usados contra a cigarrinha?"
+        )
+        self.assertIn("CONHECIMENTO GERAL PROIBIDO", policy)
+        self.assertIn("consulta oficial atual ao AGROFIT", policy)
+        self.assertIn("avaliado ou relatado no estudo", policy)
+
+    def test_seed_treatment_is_also_handled_as_high_risk_management(self):
+        policy = build_answer_policy(
+            "O tratamento de sementes ajuda no controle da cigarrinha?"
+        )
+        self.assertIn("CONHECIMENTO GERAL PROIBIDO", policy)
+        self.assertIn("não pode ser confirmado", policy)
+
+    def test_hybrid_policy_separates_vector_resistance_from_disease_tolerance(self):
+        policy = build_answer_policy(
+            "O que é um híbrido tolerante ao enfezamento?"
+        )
+        self.assertIn("CONHECIMENTO GERAL PROIBIDO", policy)
+        self.assertIn("resistência à cigarrinha", policy)
+        self.assertIn("manutenção relativa", policy)
+        self.assertIn("comportamento de sondagem", policy)
+        self.assertIn("não demonstra, por si só", policy)
+        self.assertIn("Não invente uma causa física", policy)
+
+    def test_insecticide_resistance_does_not_trigger_hybrid_policy(self):
+        policy = build_answer_policy(
+            "A perda de controle prova resistência da cigarrinha ao inseticida?"
+        )
+        self.assertNotIn("resistência à cigarrinha, resistência ao patógeno", policy)
+        self.assertNotIn("manutenção relativa de desenvolvimento", policy)
+
+    def test_low_risk_concept_still_allows_labeled_general_knowledge(self):
+        policy = build_answer_policy("Explique o que é uma cigarrinha")
+        self.assertIn("Complemento de conhecimento geral", policy)
+        self.assertNotIn("CONHECIMENTO GERAL PROIBIDO", policy)
 
     def test_transmission_preserves_lifetime_qualifier(self):
         context = (

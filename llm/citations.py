@@ -41,6 +41,10 @@ NUTRITION_GAP_POLICY_MARKER = (
     "Os trechos recuperados não fornecem critérios de diagnóstico de "
     "deficiência nutricional"
 )
+FORBIDDEN_GENERAL_KNOWLEDGE_MARKERS = (
+    NUTRITION_GAP_POLICY_MARKER,
+    "CONHECIMENTO GERAL PROIBIDO NESTA RESPOSTA.",
+)
 
 
 def extract_context_citations(context: str) -> dict[int, str]:
@@ -108,9 +112,9 @@ def expand_shorthand_page_citations(response: str) -> str:
     return SHORTHAND_PAGE_CITATION_PATTERN.sub(replace, response)
 
 
-def remove_forbidden_nutrition_complement(response: str, context: str) -> str:
-    """Remove complemento nutricional quando a própria base declarou a lacuna."""
-    if NUTRITION_GAP_POLICY_MARKER not in context:
+def remove_forbidden_general_complement(response: str, context: str) -> str:
+    """Remove a seção de conhecimento geral quando a política a proíbe."""
+    if not any(marker in context for marker in FORBIDDEN_GENERAL_KNOWLEDGE_MARKERS):
         return response
 
     match = re.search(
@@ -148,7 +152,7 @@ def normalize_response_citations(response: str, context: str) -> str:
 
 def apply_response_guards(response: str, context: str) -> str:
     """Aplica somente barreiras determinísticas que não exigem outra LLM."""
-    response = remove_forbidden_nutrition_complement(response, context)
+    response = remove_forbidden_general_complement(response, context)
     return normalize_response_citations(response, context)
 
 
